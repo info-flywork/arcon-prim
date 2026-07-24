@@ -1,0 +1,23 @@
+{
+  "name": "arcon-prim-backend",
+  "version": "1.0.0",
+  "description": "Arcon Prim Sistemi - Backend API",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/migrate.js",
+    "quality:products": "node src/productDataQuality.js",
+    "validate:products": "node src/validateProductMigration.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "multer": "^2.0.1",
+    "mysql2": "^3.11.0",
+    "xlsx": "^0.18.5"
+  }
+}
