@@ -1,222 +1,182 @@
 "use client";
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import DonemSec from "../components/DonemSec";
 
-const tl = (v) => (v == null ? "—" : Number(v).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " TL");
-const pct = (v) => (v == null ? "—" : "%" + Number(v).toLocaleString("tr-TR", { maximumFractionDigits: 2 }));
+const tl = (v) => {
+  if (v == null || v === "") return "";
+  const n = Number(v);
+  if (n === 0) return "-TL.";
+  return n.toLocaleString("tr-TR", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + "TL.";
+};
+const yzd = (v) => {
+  if (v == null) return "";
+  return (Number(v) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + "%";
+};
 
-export default function Rapor() {
+// Excel Prim Çalışma2 pivotunun kolon başlıkları (E..Y)
+const KOLONLAR = [
+  { key: "uzman", ad: "Satır Etiketleri", tip: "metin", genislik: 180 },
+  { key: "marka_grup", ad: "Marka Grup", tip: "metin", genislik: 130 },
+  { key: "magaza", ad: "Sell-Out Mağaza", tip: "metin", genislik: 180 },
+  { key: "satis_grup", ad: "Satış Grup", tip: "metin", genislik: 130 },
+  { key: "E", ad: "Prime Esas Toplam Tutar", tip: "para" },
+  { key: "F", ad: "Prim % 1", tip: "para" },
+  { key: "G", ad: "Sensai Sephora +\nSisley Cadde + %1", tip: "para" },
+  { key: "H", ad: "Sephora Bağdat + Beymen + % 0,05", tip: "para" },
+  { key: "I", ad: "Toplam Sevil LP", tip: "para" },
+  { key: "J", ad: "Toplam Toplam", tip: "para" },
+  { key: "K", ad: "Mayıs\nHedefler", tip: "para" },
+  { key: "L", ad: "Hedef\nPrim ( % 0,50 )", tip: "para" },
+  { key: "M", ad: "Dior Mağaza\n1.Lik  % 0,50", tip: "para" },
+  { key: "N", ad: "Dior Makyaj\n1. lik % 0,33", tip: "para" },
+  { key: "O", ad: "Dior Parfüm\nİlk 2 % 0,33", tip: "para" },
+  { key: "P", ad: "Dior Cilt Bakım\nİlk 3 % 0,33", tip: "para" },
+  { key: "Q", ad: "LP Mağaza - CİLT Bakım\n1. LİK Ve Diğer Sıralama Primleri", tip: "para" },
+  { key: "R", ad: "Parfüm % 1", tip: "para" },
+  { key: "S", ad: "Parfüm % 0,5", tip: "para" },
+  { key: "T", ad: "Parfüm % 0,5", tip: "para" },
+  { key: "U", ad: "Nisan' dan\nKalan", tip: "para" },
+  { key: "V", ad: "Toplam Primden\nEk Prim ( % 0,20 )", tip: "para" },
+  { key: "W", ad: "Toplam\nPrim", tip: "para" },
+  { key: "X", ad: "Prim\nAçıklama", tip: "metin" },
+  { key: "Y", ad: "Toplam Prim\nYüzdesi", tip: "yuzde" },
+];
+
+export default function PrimRaporu() {
   const [donem, setDonem] = useState(null);
-  const [rows, setRows] = useState([]);
-  const [detay, setDetay] = useState(null);
-  const [acikUzman, setAcikUzman] = useState(null);
+  const [veri, setVeri] = useState(null);
+  const [yukleniyor, setYukleniyor] = useState(false);
 
   useEffect(() => {
     if (!donem) return;
-    setDetay(null);
-    setAcikUzman(null);
-    fetch(`/api/rapor/ozet/${donem}`).then((r) => r.json()).then(setRows);
+    setYukleniyor(true);
+    fetch(`/api/prim-raporu/${donem}`)
+      .then((r) => r.json())
+      .then((d) => { setVeri(d); setYukleniyor(false); })
+      .catch(() => setYukleniyor(false));
   }, [donem]);
 
-  const gruplar = useMemo(() => {
-    const map = new Map();
-    for (const r of rows) {
-      const key = r.uzman_id;
-      if (!map.has(key)) {
-        map.set(key, {
-          uzman_id: r.uzman_id,
-          ad_soyad: r.ad_soyad,
-          magazalar: [],
-          toplam: {
-            prime_esas_toplam: 0,
-            satis_prim: 0,
-            hedef_prim: 0,
-            siralama_prim: 0,
-            bonus_prim: 0,
-            ek_prim: 0,
-            toplam_prim: 0,
-          },
-        });
-      }
-      const g = map.get(key);
-      g.magazalar.push(r);
-      g.toplam.prime_esas_toplam += Number(r.prime_esas_toplam || 0);
-      g.toplam.satis_prim += Number(r.satis_prim || 0);
-      g.toplam.hedef_prim += Number(r.hedef_prim || 0);
-      g.toplam.siralama_prim += Number(r.siralama_prim || 0);
-      g.toplam.bonus_prim += Number(r.bonus_prim || 0);
-      g.toplam.ek_prim += Number(r.ek_prim || 0);
-      g.toplam.toplam_prim += Number(r.toplam_prim || 0);
-    }
-    return [...map.values()].sort((a, b) =>
-      String(a.ad_soyad).localeCompare(String(b.ad_soyad), "tr")
-    );
-  }, [rows]);
-
-  const genelToplam = rows.reduce((t, r) => t + Number(r.toplam_prim || 0), 0);
-
-  async function detayAc(uzmanId) {
-    setAcikUzman(uzmanId);
-    const r = await fetch(`/api/rapor/detay/${donem}/${uzmanId}`);
-    setDetay(await r.json());
+  function hucreDeger(satir, kolon) {
+    if (kolon.tip === "metin") return satir[kolon.key] || "";
+    const v = satir[kolon.key];
+    if (v == null) return "";
+    if (kolon.tip === "yuzde") return yzd(v);
+    return tl(v);
   }
 
-  function csvIndir() {
-    const bas = [
-      "Uzman", "Mağaza", "Bayi", "Senaryo", "Prime Esas",
-      "Satış Primi", "Hedef Primi", "Sıralama Primi", "Bonus", "Ek Prim", "Toplam %", "Toplam Prim",
-    ];
-    const satirlar = [];
-    for (const g of gruplar) {
-      for (const r of g.magazalar) {
-        satirlar.push([
-          r.ad_soyad, r.prim_magaza, r.bayi, r.bolum_adi,
-          r.prime_esas_toplam, r.satis_prim, r.hedef_prim,
-          r.siralama_prim, r.bonus_prim, r.ek_prim, r.toplam_oran, r.toplam_prim,
-        ]);
-      }
-      satirlar.push([
-        `Toplam ${g.ad_soyad}`, "", "", "",
-        g.toplam.prime_esas_toplam, g.toplam.satis_prim, g.toplam.hedef_prim,
-        g.toplam.siralama_prim, g.toplam.bonus_prim, g.toplam.ek_prim, "",
-        g.toplam.toplam_prim,
-      ]);
-    }
-    const csv = [bas, ...satirlar].map((s) => s.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "prim_raporu.csv";
-    a.click();
+  function satirStili(satir) {
+    if (satir.tip === "genel_toplam") return {
+      background: "#FFE699", fontWeight: 800, borderTop: "2px solid #000",
+    };
+    if (satir.tip === "uzman_toplam") return {
+      background: "#FFF2CC", fontWeight: 700,
+    };
+    return {};
+  }
+
+  function excelIndir() {
+    // Backend'in xlsx endpoint'i renkli Excel dosyası üretir
+    window.location.href = `/api/prim-raporu/${donem}/xlsx`;
   }
 
   return (
-    <div>
-      <h2>Prim Raporu</h2>
-      <p className="aciklama">
-        Excel’deki gibi <b>uzman → mağaza mağaza</b> kırılım. Her uzmanın altında çalıştığı mağazalar
-        ayrı satır; altta <b>Toplam [Uzman]</b> satırında o uzmanın toplam primi.
-      </p>
-      <DonemSec value={donem} onChange={setDonem} />
-      {rows.length > 0 && (
-        <div className="satir" style={{ marginTop: 12 }}>
-          <span className="rozet ok">{gruplar.length} uzman</span>
-          <span className="rozet notr">{rows.length} mağaza satırı</span>
-          <span className="rozet notr">Genel toplam prim: {tl(genelToplam)}</span>
-          <button className="btn ikincil" onClick={csvIndir}>CSV indir</button>
+    <div className="rapor-sayfa">
+      <Link href={donem ? `/yukle?donem=${donem}` : "/yukle"} className="rapor-geri">
+        ← Prim hesaplamaya dön
+      </Link>
+
+      <section className="rapor-hero rapor-hero-genel">
+        <div className="rapor-hero-ikon">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
         </div>
-      )}
-
-      <table>
-        <thead>
-          <tr>
-            <th>Uzman / Mağaza</th>
-            <th>Senaryo</th>
-            <th className="sag">Prime Esas Ciro</th>
-            <th className="sag">Satış Primi</th>
-            <th className="sag">Hedef Primi</th>
-            <th className="sag">Sıralama Primi</th>
-            <th className="sag">Bonus</th>
-            <th className="sag">Ek Prim</th>
-            <th className="sag">%</th>
-            <th className="sag">Toplam Prim</th>
-          </tr>
-        </thead>
-        <tbody>
-          {gruplar.map((g) => (
-            <Fragment key={g.uzman_id}>
-              {g.magazalar.map((r) => (
-                <tr
-                  key={r.id}
-                  onClick={() => detayAc(r.uzman_id)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{r.ad_soyad}</div>
-                    <div style={{ fontSize: 13, color: "var(--metin-2)" }}>{r.prim_magaza}</div>
-                  </td>
-                  <td>{r.marka_grubu_adi || r.bolum_adi}</td>
-                  <td className="sag">{tl(r.prime_esas_toplam)}</td>
-                  <td className="sag">{tl(r.satis_prim)}</td>
-                  <td className="sag">{tl(r.hedef_prim)}</td>
-                  <td className="sag">{tl(r.siralama_prim)}</td>
-                  <td className="sag">{tl(r.bonus_prim)}</td>
-                  <td className="sag">{tl(r.ek_prim)}</td>
-                  <td className="sag">{pct(r.toplam_oran)}</td>
-                  <td className="sag"><b>{tl(r.toplam_prim)}</b></td>
-                </tr>
-              ))}
-              <tr
-                style={{ background: "var(--vurgu-acik, #f0f5ff)", fontWeight: 600 }}
-                onClick={() => detayAc(g.uzman_id)}
-              >
-                <td colSpan={2}>
-                  Toplam {g.ad_soyad}
-                  <span style={{ fontWeight: 500, color: "var(--metin-2)", marginLeft: 8 }}>
-                    ({g.magazalar.length} mağaza)
-                  </span>
-                </td>
-                <td className="sag">{tl(g.toplam.prime_esas_toplam)}</td>
-                <td className="sag">{tl(g.toplam.satis_prim)}</td>
-                <td className="sag">{tl(g.toplam.hedef_prim)}</td>
-                <td className="sag">{tl(g.toplam.siralama_prim)}</td>
-                <td className="sag">{tl(g.toplam.bonus_prim)}</td>
-                <td className="sag">{tl(g.toplam.ek_prim)}</td>
-                <td className="sag">
-                  {g.toplam.prime_esas_toplam > 0
-                    ? pct((g.toplam.toplam_prim / g.toplam.prime_esas_toplam) * 100)
-                    : "—"}
-                </td>
-                <td className="sag"><b>{tl(g.toplam.toplam_prim)}</b></td>
-              </tr>
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-
-      {donem && rows.length === 0 && (
-        <div className="mesaj hata">
-          Bu dönem için hesap sonucu yok.{" "}
-          <Link href="/yukle" style={{ textDecoration: "underline", fontWeight: 600 }}>
-            Veri Yükleme → Primleri Hesapla
-          </Link>
+        <div>
+          <span className="rapor-kicker">Dönem raporu</span>
+          <h2>Prim Çalışma Raporu</h2>
+          <p>Excel Prim Çalışma2 pivotunun birebir kopyası. Her prim kalemini ayrıştırılmış görünümle inceleyin.</p>
         </div>
-      )}
+      </section>
 
-      {detay?.ozet && acikUzman && (
-        <div className="yukle-kart" style={{ marginTop: 24 }}>
-          <h3>{detay.ozet.ad_soyad} — Kural değerlendirmesi</h3>
-          <details>
-            <summary>Kural detayı (JSON)</summary>
-            <pre className="json">{JSON.stringify(
-              typeof detay.ozet.detay_json === "string" ? JSON.parse(detay.ozet.detay_json) : detay.ozet.detay_json,
-              null, 2)}</pre>
-          </details>
-          <h3 style={{ marginTop: 14 }}>Satır detayı (ilk 100)</h3>
-          <table>
+      <div className="rapor-araclar">
+        <DonemSec value={donem} onChange={setDonem} />
+        {veri?.satirlar?.length > 0 && (
+          <button className="btn rapor-indir" onClick={excelIndir}>
+            <span>↓</span> Excel olarak indir
+          </button>
+        )}
+      </div>
+
+      {yukleniyor && <div className="mesaj notr" style={{ marginTop: 12 }}>Yükleniyor...</div>}
+
+      {veri && veri.satirlar && veri.satirlar.length > 0 && (
+        <div style={{
+          marginTop: 16,
+          border: "1px solid #333",
+          borderRadius: 4,
+          overflow: "auto",
+          background: "#fff",
+        }}>
+          <table style={{
+            borderCollapse: "collapse",
+            fontSize: 11,
+            fontFamily: "Calibri, Arial, sans-serif",
+            width: "100%",
+            minWidth: 2400,
+          }}>
             <thead>
+              {/* Üst filtre bilgisi (Excel'deki gibi) */}
+              <tr style={{ background: "#F5F5F5", fontSize: 10 }}>
+                <th colSpan={4} style={{ padding: 4, textAlign: "left", border: "1px solid #999" }}>
+                  <div>Mağaza Toplam Satış: (Tümü)</div>
+                  <div>Marka: (Tümü)</div>
+                  <div>SATIŞ TÜRÜ: (Tümü)</div>
+                  <div>Prime Esas Toplam Tutar: (Birden Çok Öğe)</div>
+                </th>
+                <th colSpan={21} style={{ border: "1px solid #999" }}></th>
+              </tr>
+              {/* Ana başlıklar — siyah zemin turuncu yazı (Excel görselliği) */}
               <tr>
-                <th>Ürün</th><th>Marka</th><th>Mağaza</th>
-                <th className="sag">Beyan</th><th className="sag">Prim Adet</th>
-                <th className="sag">Birim Ciro</th><th className="sag">Prime Esas</th><th>Açıklama</th>
+                {KOLONLAR.map((k) => (
+                  <th key={k.key} style={{
+                    background: "#1F1F1F", color: "#FFC000", padding: "8px 6px",
+                    border: "1px solid #333", whiteSpace: "pre-line",
+                    minWidth: k.genislik || 90, textAlign: "center",
+                    fontSize: 10, fontWeight: 700, lineHeight: 1.2,
+                  }}>
+                    {k.ad}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {(detay.satirlar || []).slice(0, 100).map((s) => (
-                <tr key={s.id}>
-                  <td>{s.uniq_urun_adi || s.urun_adi}</td>
-                  <td>{s.marka}</td>
-                  <td>{s.prim_magaza}</td>
-                  <td className="sag">{s.beyan_adet}</td>
-                  <td className="sag">{s.prim_adet}</td>
-                  <td className="sag">{tl(s.birim_ciro)}</td>
-                  <td className="sag">{tl(s.prime_esas_tutar)}</td>
-                  <td>{s.aciklama || ""}</td>
+              {veri.satirlar.map((s, i) => (
+                <tr key={i} style={{ ...satirStili(s) }}>
+                  {KOLONLAR.map((k) => {
+                    const isSayi = k.tip === "para" || k.tip === "yuzde";
+                    return (
+                      <td key={k.key} style={{
+                        border: "1px solid #ccc", padding: "4px 6px",
+                        textAlign: isSayi ? "right" : "left",
+                        whiteSpace: k.tip === "metin" ? "nowrap" : "normal",
+                        color: "#000",
+                      }}>
+                        {hucreDeger(s, k)}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {donem && veri?.satirlar?.length === 0 && (
+        <div className="rapor-bos">
+          <span>∿</span>
+          <h3>Henüz rapor oluşmadı</h3>
+          <p>Bu dönem için prim sonucu bulunmuyor.</p>
+          <Link href="/yukle" className="btn">Prim hesaplamaya git →</Link>
         </div>
       )}
     </div>

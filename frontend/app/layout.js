@@ -12,15 +12,24 @@ export default function RootLayout({ children }) {
       <body>
         <div className="layout">
           <aside className="sidebar">
-            <h1>
-              <span className="logo">A</span>
-              <span>
-                Arcon Prim
-                <small>Prim Yönetim Sistemi</small>
+            <div className="sidebar-isik sidebar-isik-bir" />
+            <div className="sidebar-isik sidebar-isik-iki" />
+            <div className="sidebar-marka">
+              <span className="logo">A<span>+</span></span>
+              <span className="marka-metin">
+                <strong>Arcon Prim</strong>
+                <small>Prim yönetim sistemi</small>
               </span>
-            </h1>
+            </div>
             <Menu />
-            <div className="alt-bilgi">v1.0 · Fly-Work</div>
+            <div className="sidebar-durum">
+              <span className="durum-nokta" />
+              <span>
+                <strong>Sistem hazır</strong>
+                <small>Verileriniz güvende</small>
+              </span>
+            </div>
+            <div className="alt-bilgi">Arcon Prim <span>·</span> v1.0</div>
           </aside>
           <main className="icerik">{children}</main>
         </div>

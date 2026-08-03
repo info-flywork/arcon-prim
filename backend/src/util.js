@@ -23,7 +23,16 @@ function normalizeStore(s) {
 // "5.800,00" / "  2.258,33TL. " / 5800 -> Number
 function parseTrNumber(v) {
   if (v === null || v === undefined || v === "") return 0;
-  if (typeof v === "number") return v;
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return 0;
+    // CSV/xlsx bazen TR binlik "584.098" (=584098) değerini float 584.098 yapar.
+    // Tek grup, tam 3 ondalık hane → binlik ayraç olarak yorumla.
+    const asStr = String(v);
+    if (v >= 1 && /^\d{1,3}\.\d{3}$/.test(asStr)) {
+      return Number(asStr.replace(/\./g, ""));
+    }
+    return v;
+  }
   let s = String(v).replace(/TL\.?/gi, "").replace(/[₺\s]/g, "").trim();
   if (!s || s === "-") return 0;
   // 1.234.567,89 -> 1234567.89

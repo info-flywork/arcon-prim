@@ -1,239 +1,452 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import DonemSec from "../components/DonemSec";
 
-// Aylık girdi dosyaları — sıra önemli: önce master, sonra veriler
-const dosyalar = [
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+const DOSYALAR = [
   {
     tip: "uzman-magaza",
-    ad: "1. Uzman-Mağaza-Grup (master)",
-    aciklama: "Tek kaynak: Excel’de yeni uzman veya yeni mağaza/bayi varsa otomatik eklenir; seçili döneme atama yazılır. Manuel ekleme gerekmez. Kolonlar: ŞEHİR, MAĞAZA KODU, BAYİ, MAĞAZA, PRİM MAĞAZA, Uzman Ad-Soyad, Group.",
-    zorunlu: true,
+    baslik: "Uzman · Mağaza · Grup",
+    kisa: "Uzman ve mağaza eşleşmeleri",
+    hazirAnahtar: "atama",
+    logTipleri: ["uzman-magaza", "uzman_magaza"],
   },
   {
     tip: "sellout",
-    ad: "2. Sell-out Data",
-    aciklama: "Bayilerden gelen resmi satış. Kolonlar: Bayi, Ürün Adı, Arcon Referans, Arcon Barkod, Adet, Ciro Kdv Hariç, Prim Mağaza, Marka, Ürün Grubu...",
-    zorunlu: true,
+    baslik: "Sell-out",
+    kisa: "Resmî bayi satış verisi",
+    hazirAnahtar: "sellout",
+    logTipleri: ["sellout"],
   },
   {
     tip: "zeops",
-    ad: "3. Zeops Ham Data",
-    aciklama: "Uzman satış beyanları. Kolonlar: Ziyaret ID, Ad, Soyad, İşlem Tarihi, Durum, Satış Tarihi, Mağaza, Barkod, Kod, Etiket, Adet, Fiyat, Toplam.",
-    zorunlu: true,
+    baslik: "Zeops",
+    kisa: "Uzman satış beyanları",
+    hazirAnahtar: "zeops",
+    logTipleri: ["zeops"],
   },
   {
     tip: "hedef",
-    ad: "4. Ciro Hedefleri",
-    aciklama: "Kolonlar: BAYİ, MAĞAZA KOD, MAĞAZA ADI, MARKA, REVİZE <Ay> (hedef ciro).",
-    zorunlu: true,
+    baslik: "Ciro Hedefleri",
+    kisa: "Mağaza ve marka hedefleri",
+    hazirAnahtar: "hedef",
+    logTipleri: ["hedef"],
   },
   {
     tip: "siralama",
-    ad: "5. Marka Sıralamaları",
-    aciklama: "Kolonlar: MAĞAZA, ÇEŞİT, MARKA, SIRALAMA, AY, YIL, Prim Mağaza Eşleşenler.",
-    zorunlu: true,
+    baslik: "Marka Sıralamaları",
+    kisa: "Aylık marka sıralamaları",
+    hazirAnahtar: "siralama",
+    logTipleri: ["siralama"],
   },
   {
     tip: "stok",
-    ad: "6. Stok Liste (ürün master tamamlama)",
-    aciklama: "Kolonlar: STOK KODU, STOK ADI, SEKTÖR ADI, MARKA, BARKOD 1, UNIQ KOD... Var olan ürünlere dokunmaz, sadece DB'de eksik olanları tamamlar.",
-    zorunlu: false,
+    baslik: "Stok Listesi",
+    kisa: "Ürün master tamamlama",
+    hazirAnahtar: "stok",
+    logTipleri: ["stok", "uniq_kod"],
   },
 ];
 
-const tl = (v) => (v == null ? "—" : Number(v).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " TL");
-const say = (v) => (v == null ? "—" : Number(v).toLocaleString("tr-TR"));
+const TIP_ADI = Object.fromEntries(DOSYALAR.map((dosya) => [dosya.tip, dosya.baslik]));
 
-export default function Yukle() {
-  const router = useRouter();
-  const [donem, setDonem] = useState(null);
-  const [sonuclar, setSonuclar] = useState({});
-  const [yukleniyor, setYukleniyor] = useState(null);
-  const [log, setLog] = useState([]);
-  const [dashboard, setDashboard] = useState(null);
-  const [hesaplaniyor, setHesaplaniyor] = useState(false);
-  const [mesaj, setMesaj] = useState(null);
+const say = (deger) => Number(deger || 0).toLocaleString("tr-TR");
+const tl = (deger) =>
+  Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " TL";
 
-  const yenileDurum = (donemId) => {
-    if (!donemId) return;
-    fetch(`/api/import-log/${donemId}`).then((r) => r.json()).then(setLog);
-    fetch(`/api/dashboard/${donemId}`).then((r) => r.json()).then(setDashboard);
-  };
-
-  useEffect(() => {
-    if (!donem) return;
-    setMesaj(null);
-    yenileDurum(donem);
-  }, [donem, sonuclar]);
-
-  async function gonder(tip, file) {
-    if (!file || !donem) return;
-    setYukleniyor(tip);
-    setMesaj(null);
-    const fd = new FormData();
-    fd.append("dosya", file);
-    try {
-      const r = await fetch(`/api/import/${tip}/${donem}`, { method: "POST", body: fd });
-      const metin = await r.text();
-      let d;
-      try {
-        d = JSON.parse(metin);
-      } catch {
-        d = { hata: `Backend'e ulaşılamadı (${r.status}). API'nin localhost:4000'de çalıştığını kontrol edin.` };
-      }
-      setSonuclar((s) => ({ ...s, [tip]: d }));
-    } catch (e) {
-      setSonuclar((s) => ({ ...s, [tip]: { hata: "Bağlantı hatası: " + e.message } }));
-    } finally {
-      setYukleniyor(null);
-    }
+function Ikon({ tip }) {
+  if (tip === "check") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m5 12 4 4L19 6" />
+      </svg>
+    );
   }
+  if (tip === "history") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 8v4l3 2M3.5 9A9 9 0 1 1 3 14" />
+        <path d="M3 4v5h5" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    </svg>
+  );
+}
 
-  const hazirlik = {
+function hazirlikFromDashboard(dashboard) {
+  return {
     atama: Number(dashboard?.atama?.satir || 0) > 0,
     sellout: Number(dashboard?.sellout?.satir || 0) > 0,
     zeops: Number(dashboard?.beyan?.satir || 0) > 0,
     hedef: Number(dashboard?.hedef?.satir || 0) > 0,
     siralama: Number(dashboard?.siralama?.satir || 0) > 0,
+    stok: Number(dashboard?.stok?.satir || 0) > 0,
   };
-  const hesapHazir = hazirlik.atama && hazirlik.sellout && hazirlik.zeops;
-  const eslesmeyen = Number(dashboard?.beyan?.eslesmeyen || 0) + Number(dashboard?.sellout?.eslesmeyen || 0);
+}
 
-  async function hesapla() {
-    if (!donem || !hesapHazir) return;
+export default function PrimHesaplama() {
+  const router = useRouter();
+  const [donemler, setDonemler] = useState([]);
+  const [acikId, setAcikId] = useState(null);
+  const [panel, setPanel] = useState({});
+  const [yukleniyor, setYukleniyor] = useState(null);
+  const [hesaplaniyor, setHesaplaniyor] = useState(false);
+  const [sonuclar, setSonuclar] = useState({});
+  const [mesaj, setMesaj] = useState(null);
+  const [sayfaYukleniyor, setSayfaYukleniyor] = useState(true);
+
+  async function donemVerisi(donemId) {
+    const [logCevap, dashboardCevap] = await Promise.all([
+      fetch(`/api/import-log/${donemId}`),
+      fetch(`/api/dashboard/${donemId}`),
+    ]);
+    if (!logCevap.ok || !dashboardCevap.ok) throw new Error("Dönem verileri alınamadı");
+    return {
+      loglar: await logCevap.json(),
+      dashboard: await dashboardCevap.json(),
+    };
+  }
+
+  async function paneliYukle(donemId) {
+    const veri = await donemVerisi(donemId);
+    setPanel((onceki) => ({
+      ...onceki,
+      [donemId]: {
+        loglar: Array.isArray(veri.loglar) ? veri.loglar : [],
+        dashboard: veri.dashboard,
+      },
+    }));
+    return veri;
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const simdi = new Date();
+        const yil = simdi.getFullYear();
+        const ay = simdi.getMonth() + 1;
+        let liste = await fetch("/api/donemler").then((cevap) => cevap.json());
+        if (!Array.isArray(liste)) throw new Error("Dönem listesi alınamadı");
+
+        let buAy = liste.find(
+          (item) => Number(item.yil) === yil && Number(item.ay) === ay
+        );
+        if (!buAy) {
+          const cevap = await fetch("/api/donemler", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ yil, ay }),
+          });
+          buAy = await cevap.json();
+          if (!cevap.ok || buAy.hata) throw new Error(buAy.hata || "Bu ay açılamadı");
+          liste = await fetch("/api/donemler").then((yanit) => yanit.json());
+          buAy = liste.find((item) => Number(item.id) === Number(buAy.id)) || buAy;
+        }
+
+        setDonemler(liste);
+        const queryDonem = Number(new URLSearchParams(window.location.search).get("donem") || 0) || null;
+        const secili =
+          (queryDonem && liste.find((item) => Number(item.id) === queryDonem)) || buAy;
+        setAcikId(secili.id);
+        await paneliYukle(secili.id);
+      } catch (hata) {
+        setMesaj({ tip: "hata", metin: hata.message });
+      } finally {
+        setSayfaYukleniyor(false);
+      }
+    })();
+  }, []);
+
+  const acikDonem = useMemo(
+    () => donemler.find((item) => Number(item.id) === Number(acikId)) || null,
+    [acikId, donemler]
+  );
+  const acikPanel = panel[acikId] || { loglar: [], dashboard: null };
+  const hazirlik = useMemo(
+    () => hazirlikFromDashboard(acikPanel.dashboard),
+    [acikPanel.dashboard]
+  );
+
+  function dosyaHazir(dosya) {
+    if (dosya.hazirAnahtar && hazirlik[dosya.hazirAnahtar]) return true;
+    return (acikPanel.loglar || []).some((log) => dosya.logTipleri.includes(log.tip));
+  }
+
+  const tumDosyalarHazir = DOSYALAR.every(dosyaHazir);
+  const primVar = Number(acikPanel.dashboard?.prim?.kayit || 0) > 0;
+
+  async function ayAc(donem) {
+    if (Number(acikId) === Number(donem.id)) return;
+    setMesaj(null);
+    setSonuclar({});
+    setAcikId(donem.id);
+    if (!panel[donem.id]) {
+      try {
+        await paneliYukle(donem.id);
+      } catch (hata) {
+        setMesaj({ tip: "hata", metin: hata.message });
+      }
+    }
+  }
+
+  async function dosyaGonder(tip, file) {
+    if (!file || !acikId) return;
+    setYukleniyor(tip);
+    setMesaj(null);
+    const form = new FormData();
+    form.append("dosya", file);
+    try {
+      const cevap = await fetch(`/api/import/${tip}/${acikId}`, {
+        method: "POST",
+        body: form,
+      });
+      const veri = await cevap.json();
+      if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Dosya yüklenemedi");
+      setSonuclar((onceki) => ({ ...onceki, [tip]: veri }));
+      await paneliYukle(acikId);
+      setMesaj({ tip: "ok", metin: `${TIP_ADI[tip]} başarıyla yüklendi.` });
+    } catch (hata) {
+      setSonuclar((onceki) => ({ ...onceki, [tip]: { hata: hata.message } }));
+      setMesaj({ tip: "hata", metin: hata.message });
+    } finally {
+      setYukleniyor(null);
+    }
+  }
+
+  async function primHesapla() {
+    if (!tumDosyalarHazir || !acikId) return;
     setHesaplaniyor(true);
     setMesaj(null);
     try {
-      const r = await fetch(`/api/hesapla/${donem}`, { method: "POST" });
-      const d = await r.json();
-      if (d.hata) throw new Error(d.hata);
+      const cevap = await fetch(`/api/hesapla/${acikId}`, { method: "POST" });
+      const veri = await cevap.json();
+      if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Prim hesabı tamamlanamadı");
+      await paneliYukle(acikId);
+      setDonemler((liste) =>
+        liste.map((item) =>
+          Number(item.id) === Number(acikId) ? { ...item, durum: "hesaplandi" } : item
+        )
+      );
       setMesaj({
         tip: "ok",
-        metin: `Hesap tamam: ${say(d.uzmanMagazaSayisi)} uzman-mağaza, toplam prim ${tl(d.toplamPrim)}. Prim Raporu'na yönlendiriliyorsunuz...`,
+        metin: `${say(veri.uzmanMagazaSayisi)} uzman-mağaza için ${tl(
+          veri.toplamPrim
+        )} prim hesaplandı. Rapor açılıyor…`,
       });
-      yenileDurum(donem);
-      setTimeout(() => router.push("/rapor"), 900);
-    } catch (e) {
-      setMesaj({ tip: "hata", metin: e.message });
-    } finally {
+      router.push(`/rapor?donem=${acikId}`);
+    } catch (hata) {
+      setMesaj({ tip: "hata", metin: hata.message });
       setHesaplaniyor(false);
     }
   }
 
+  if (sayfaYukleniyor) {
+    return (
+      <div className="prim-yukleniyor">
+        <span />
+        Bu ay hazırlanıyor…
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <h2>Veri Yükleme</h2>
-      <p className="aciklama">
-        Önce Excel dosyalarını yükleyin, ardından aynı sayfadan primleri hesaplayın.
-        Hesap bitince otomatik olarak Prim Raporu sayfasına gidersiniz.
-      </p>
-      <DonemSec value={donem} onChange={setDonem} />
-
-      {dosyalar.map((d) => {
-        const s = sonuclar[d.tip];
-        return (
-          <div className="yukle-kart" key={d.tip}>
-            <h3>{d.ad}{!d.zorunlu && <span className="rozet notr" style={{ marginLeft: 8 }}>opsiyonel</span>}</h3>
-            <p>{d.aciklama}</p>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              disabled={!donem || yukleniyor || hesaplaniyor}
-              onChange={(e) => gonder(d.tip, e.target.files[0])}
-            />
-            {yukleniyor === d.tip && <span className="rozet notr" style={{ marginLeft: 10 }}>Yükleniyor...</span>}
-            {s && !s.hata && (
-              <span className="rozet ok" style={{ marginLeft: 10 }}>
-                {d.tip === "uzman-magaza"
-                  ? `${s.ok} atama${s.yeniUzman ? ` · ${s.yeniUzman} yeni uzman` : ""}${s.yeniMagaza ? ` · ${s.yeniMagaza} yeni mağaza` : ""} · ${s.err ?? 0} sorunlu`
-                  : `${s.toplam ?? s.ok} satır · ${s.eslesmeyen ?? s.err ?? 0} sorunlu`}
-              </span>
-            )}
-            {s?.hata && (
-              <div style={{ marginTop: 10 }}>
-                <span className="rozet hata">{s.hata}</span>
-                {s.gorulen_basliklar?.length > 0 && (
-                  <details style={{ marginTop: 8 }}>
-                    <summary>Dosyada bulunan başlıkları göster ({s.gorulen_basliklar.length})</summary>
-                    <div style={{ marginTop: 6, fontSize: 12, color: "var(--metin-2)" }}>
-                      {s.gorulen_basliklar.map((k, i) => (
-                        <span key={i} className="rozet notr" style={{ margin: "2px 4px 2px 0" }}>{k}</span>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {donem && (
-        <div className="yukle-kart" style={{ borderColor: "rgba(37,99,235,.35)", background: "var(--vurgu-acik, #f5f8ff)" }}>
-          <h3>7. Primleri Hesapla</h3>
-          <p>
-            Dosyalar yüklendikten sonra hesabı burada çalıştırın. Sonuçlar Prim Raporu ve Satır Kontrol
-            sayfalarına yazılır.
-          </p>
-          <div className="satir" style={{ flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-            <span className={`rozet ${hazirlik.atama ? "ok" : "hata"}`}>Atama: {say(dashboard?.atama?.satir)}</span>
-            <span className={`rozet ${hazirlik.sellout ? "ok" : "hata"}`}>Sell-out: {say(dashboard?.sellout?.satir)}</span>
-            <span className={`rozet ${hazirlik.zeops ? "ok" : "hata"}`}>Zeops: {say(dashboard?.beyan?.satir)}</span>
-            <span className={`rozet ${hazirlik.hedef ? "ok" : "notr"}`}>Hedef: {say(dashboard?.hedef?.satir)}</span>
-            <span className={`rozet ${hazirlik.siralama ? "ok" : "notr"}`}>Sıralama: {say(dashboard?.siralama?.satir)}</span>
-            {eslesmeyen > 0 && (
-              <Link href="/eslesmeyen" className="rozet notr">
-                {say(eslesmeyen)} eşleşmeyen satır → kontrol et
-              </Link>
-            )}
-          </div>
-          <div className="satir">
-            <button
-              className="btn"
-              onClick={hesapla}
-              disabled={!hesapHazir || hesaplaniyor || !!yukleniyor}
-            >
-              {hesaplaniyor ? "Hesaplanıyor..." : "Primleri Hesapla → Prim Raporu"}
-            </button>
-            {Number(dashboard?.prim?.kayit || 0) > 0 && (
-              <>
-                <Link className="btn ikincil" href="/rapor">Prim Raporu</Link>
-                <Link className="btn ikincil" href="/mutabakat">Satır Kontrol</Link>
-              </>
-            )}
-          </div>
-          {!hesapHazir && (
-            <p className="aciklama" style={{ marginTop: 10, marginBottom: 0 }}>
-              Hesap için en az Uzman-Mağaza-Grup, Sell-out ve Zeops dosyaları bu dönemde yüklü olmalı.
-            </p>
-          )}
-          {mesaj && <div className={`mesaj ${mesaj.tip}`} style={{ marginTop: 12 }}>{mesaj.metin}</div>}
+    <div className="prim-sayfa">
+      <header className="prim-hero">
+        <div>
+          <span className="prim-kicker">Aylık prim akışı</span>
+          <h2>Prim Hesaplama</h2>
+          <p>Ayı seçin, dosyaları yükleyin ve primi hesaplayın.</p>
         </div>
-      )}
+        {acikDonem && (
+          <div className="aktif-donem">
+            <span>Seçili dönem</span>
+            <strong>{acikDonem.ad}</strong>
+            <small>
+              {primVar
+                ? "Hesaplandı"
+                : acikDonem.durum === "acik"
+                  ? "Yüklemeye hazır"
+                  : acikDonem.durum}
+            </small>
+          </div>
+        )}
+      </header>
 
-      {log.length > 0 && (
-        <>
-          <h2 style={{ marginTop: 24 }}>Yükleme Geçmişi</h2>
-          <table>
-            <thead>
-              <tr><th>Tarih</th><th>Tip</th><th>Dosya</th><th className="sag">Satır</th><th className="sag">Hatalı</th></tr>
-            </thead>
-            <tbody>
-              {log.map((l) => (
-                <tr key={l.id}>
-                  <td>{new Date(l.created_at).toLocaleString("tr-TR")}</td>
-                  <td>{l.tip}</td>
-                  <td>{l.dosya_adi}</td>
-                  <td className="sag">{l.satir_sayisi}</td>
-                  <td className="sag">{l.hatali_satir}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+      <section className="ay-secici">
+        <div className="ay-secici-baslik">
+          <span>Dönemler</span>
+          <small>Tıklayınca ay açılır</small>
+        </div>
+        <div className="donem-kutular ay-kutular" role="tablist" aria-label="Dönem seçimi">
+          {donemler.map((donem) => {
+            const aktif = Number(acikId) === Number(donem.id);
+            const buAy =
+              Number(donem.yil) === new Date().getFullYear() &&
+              Number(donem.ay) === new Date().getMonth() + 1;
+            const donemPrim =
+              Number(panel[donem.id]?.dashboard?.prim?.kayit || 0) > 0 ||
+              donem.durum === "hesaplandi";
+            return (
+              <button
+                key={donem.id}
+                type="button"
+                role="tab"
+                aria-selected={aktif}
+                className={aktif ? "aktif" : ""}
+                onClick={() => ayAc(donem)}
+              >
+                <span>{donem.ad}</span>
+                <small>
+                  <i className={`donem-durum ${donemPrim ? "hesaplandi" : donem.durum}`} />
+                  {buAy ? "Bu ay" : donemPrim ? "Hesaplandı" : donem.durum === "kapandi" ? "Kapalı" : "Açık"}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {mesaj && <div className={`mesaj ${mesaj.tip}`}>{mesaj.metin}</div>}
+
+      {acikDonem && (
+        <section className="ay-panel" key={acikDonem.id}>
+          <div className="ay-panel-baslik">
+            <div>
+              <span className="panel-adim">{String(acikDonem.ay).padStart(2, "0")}</span>
+              <div>
+                <h3>{acikDonem.ad}</h3>
+                <p>
+                  {DOSYALAR.filter(dosyaHazir).length}/{DOSYALAR.length} dosya yüklü
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="dosya-grid">
+            {DOSYALAR.map((dosya) => {
+              const hazir = dosyaHazir(dosya);
+              const sonuc = sonuclar[dosya.tip];
+              return (
+                <article
+                  key={dosya.tip}
+                  className={`dosya-kart ${hazir ? "hazir" : ""} ${
+                    yukleniyor === dosya.tip ? "yukleniyor" : ""
+                  }`}
+                >
+                  <div className="dosya-ikon">
+                    <Ikon tip={hazir ? "check" : "upload"} />
+                  </div>
+                  <div className="dosya-bilgi">
+                    <div>
+                      <h4>{dosya.baslik}</h4>
+                      <span className="zorunlu">Zorunlu</span>
+                    </div>
+                    <p>{dosya.kisa}</p>
+                    {sonuc?.hata && <small className="dosya-hata">{sonuc.hata}</small>}
+                  </div>
+                  <label
+                    className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""}`}
+                    aria-live="polite"
+                  >
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      disabled={
+                        !!yukleniyor ||
+                        hesaplaniyor ||
+                        acikDonem.durum === "kapandi"
+                      }
+                      onChange={(event) => {
+                        dosyaGonder(dosya.tip, event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                    {yukleniyor === dosya.tip ? (
+                      <>
+                        <span className="yukleme-spinner" />
+                        Yükleniyor…
+                      </>
+                    ) : hazir ? (
+                      "Yenile"
+                    ) : (
+                      "Dosya seç"
+                    )}
+                  </label>
+                </article>
+              );
+            })}
+          </div>
+
+          {(acikPanel.loglar || []).length > 0 && (
+            <details className="bu-ay-log">
+              <summary>Yüklenen dosyalar ({acikPanel.loglar.length})</summary>
+              <div className="mini-log-listesi">
+                {acikPanel.loglar.map((log) => (
+                  <div key={log.id}>
+                    <span className="mini-dosya-ikon">XLS</span>
+                    <span>
+                      <strong>{log.dosya_adi}</strong>
+                      <small>
+                        {TIP_ADI[log.tip] || log.tip} · {say(log.satir_sayisi)} satır
+                      </small>
+                    </span>
+                    <time>{new Date(log.created_at).toLocaleString("tr-TR")}</time>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          <div className="panel-alt">
+            <div>
+              <p>
+                {tumDosyalarHazir
+                  ? "Tüm dosyalar hazır. Prim hesaplanabilir."
+                  : "Tüm dosyaları yükleyin."}
+              </p>
+              {primVar && (
+                <p className="panel-alt-ikincil">Bu dönem için hesap sonucu mevcut.</p>
+              )}
+            </div>
+            <div className="panel-alt-aksiyonlar">
+              <button
+                className="btn prim-cta"
+                disabled={
+                  !tumDosyalarHazir ||
+                  !!yukleniyor ||
+                  hesaplaniyor ||
+                  acikDonem.durum === "kapandi"
+                }
+                onClick={primHesapla}
+              >
+                {hesaplaniyor ? (
+                  <>
+                    <span className="yukleme-spinner" />
+                    Hesaplanıyor…
+                  </>
+                ) : primVar ? (
+                  <>
+                    Yeniden hesapla <span>→</span>
+                  </>
+                ) : (
+                  <>
+                    Primi hesapla <span>→</span>
+                  </>
+                )}
+              </button>
+              {primVar && (
+                <Link href={`/rapor?donem=${acikDonem.id}`} className="btn ikincil">
+                  Prim raporunu görüntüle
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
       )}
     </div>
   );

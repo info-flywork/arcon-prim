@@ -64,15 +64,24 @@ function identityCandidates({ barcode, reference, stockCode } = {}) {
 }
 
 async function loadProductResolver(conn = pool) {
+  // inceleme ürünleri de eşleşsin: aksi halde Rabanne set gibi stokta olan
+  // ürünler urun_id=null kalıp yanlışlıkla "Atama yok / Grup Dışı" görünüyor.
   const [rows] = await conn.query(`
     SELECT k.id AS identifier_id, k.urun_id, k.tip, k.deger_normalize,
-           u.uniq_kod, u.marka, u.urun_adi
+           u.uniq_kod, u.marka, u.urun_adi, u.durum
     FROM urun_kimlik k
     JOIN urun u ON u.id=k.urun_id
-    WHERE k.aktif=1 AND u.durum='aktif'
+    WHERE k.aktif=1 AND u.durum IN ('aktif','inceleme')
   `);
   const identifierMap = new Map();
-  for (const row of rows) identifierMap.set(`${row.tip}|${row.deger_normalize}`, row);
+  for (const row of rows) {
+    const key = `${row.tip}|${row.deger_normalize}`;
+    const existing = identifierMap.get(key);
+    // Aynı kimlikte birden fazla ürün varsa aktif olanı tercih et
+    if (!existing || (existing.durum !== "aktif" && row.durum === "aktif")) {
+      identifierMap.set(key, row);
+    }
+  }
   return { identifierMap };
 }
 
@@ -88,8 +97,25 @@ function resolveProduct(resolver, rawIdentifiers) {
       return found ? { ...candidate, ...found } : null;
     })
     .filter(Boolean);
-  const productIds = [...new Set(matches.map((match) => Number(match.urun_id)))];
+  const byProduct = new Map();
+  for (const match of matches) {
+    const id = Number(match.urun_id);
+    if (!byProduct.has(id)) byProduct.set(id, match);
+  }
+  const productIds = [...byProduct.keys()];
   if (productIds.length > 1) {
+    // Aktif varsa onu seç; yoksa çakışma
+    const aktif = matches.find((m) => m.durum === "aktif");
+    if (aktif && new Set(matches.filter((m) => m.durum === "aktif").map((m) => Number(m.urun_id))).size === 1) {
+      return {
+        status: "ok",
+        candidates,
+        matches,
+        productId: aktif.urun_id,
+        identifierId: aktif.identifier_id,
+        method: aktif.method,
+      };
+    }
     return { status: "urun_cakisma", candidates, matches, productIds };
   }
   if (!productIds.length) return { status: "urun_yok", candidates, matches: [] };

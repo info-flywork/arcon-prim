@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "csv-parse": "^7.0.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "multer": "^2.0.1",
     "mysql2": "^3.11.0",

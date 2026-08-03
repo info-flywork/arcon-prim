@@ -161,7 +161,7 @@ export default function Mutabakat() {
           )}
           {!yukleniyor && !veri.hata && satirlar.length === 0 && (
             <div className="mesaj hata">
-              Bu dönem için hesap sonucu yok. <Link href="/yukle">Veri Yükleme → Primleri Hesapla</Link>
+              Bu dönem için hesap sonucu yok. <Link href="/yukle">Prim Hesaplama</Link>
             </div>
           )}
           {satirlar.length > 0 && (

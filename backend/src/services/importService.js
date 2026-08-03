@@ -65,9 +65,12 @@ function readSheet(buffer, beklenen = [], tercihEdilenSekmeler = []) {
   // range: başlık satırından itibaren oku (üstteki boş/not satırları atlanır)
   const ws = wb.Sheets[secili.ad];
   const sheetStart = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]).s.r : 0;
+  // CSV: raw:false — "5.800,00" string kalsın (parseTrNumber → 5800).
+  // raw:true iken SheetJS bunu US ondalık sanıp 5.8 yapıyor.
+  // XLSX: raw:true — Excel hücreleri gerçek sayı olarak gelsin.
   return XLSX.utils.sheet_to_json(ws, {
     defval: null,
-    raw: true,
+    raw: isZip,
     range: sheetStart + secili.satir,
   });
 }
@@ -168,9 +171,28 @@ async function loadLegacyRepresentatives(conn) {
   return new Map(rows.map((row) => [Number(row.urun_id), row.legacy_id]));
 }
 
-/** Group adını prim_bolum ile eşleştir (Dolce & Gabbana → BEYMEN DG vb.) */
-function eslestirBolum(bolumler, { kanal, grup, uzmanTipi }) {
-  const candidates = bolumler.filter((b) => !kanal || b.kanal === kanal);
+/** Group adını prim_bolum ile eşleştir (Dolce & Gabbana → BEYMEN DG vb.)
+ *  altKanal: SEVIL/BEYMEN gibi — aynı marka grubunda iki farklı bölüm varsa
+ *  (Beymen mağazasındaki DG %1.5, Sevil noktasındaki DG %1.0 gibi) doğru seçim
+ */
+function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
+  // Önce kanal filtresi
+  let candidates = bolumler.filter((b) => !kanal || b.kanal === kanal);
+  // Sonra alt_kanal filtresi — DB'de alt_kanal tanımlı olan bölümler için
+  if (altKanal) {
+    const altFilter = candidates.filter((b) => {
+      if (!b.alt_kanal) return true; // alt_kanal tanımsızsa (genel bölüm) dahil et
+      return b.alt_kanal === altKanal;
+    });
+    if (altFilter.length) candidates = altFilter;
+  } else {
+    // alt_kanal belirtilmediyse, alt_kanal='BEYMEN' varsayılan (mağaza noktası,
+    // özel bir Sevil noktası değil). Aksi halde çift kayıtta yanlış olan seçilebilir.
+    const altKanalliBolumler = candidates.filter((b) => b.alt_kanal);
+    const varsayilan = altKanalliBolumler.filter((b) => b.alt_kanal === 'BEYMEN');
+    const altKanalSız = candidates.filter((b) => !b.alt_kanal);
+    if (varsayilan.length) candidates = [...altKanalSız, ...varsayilan];
+  }
   const grupNorm = normalizeName(grup);
   if (!candidates.length) return null;
 
@@ -233,7 +255,7 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
   try {
     await conn.beginTransaction();
     const [bolumler] = await conn.query(
-      "SELECT id, kanal, uzman_tipi, marka_grubu_key, marka_grubu_adi, markalar FROM prim_bolum WHERE aktif=1"
+      "SELECT id, kanal, alt_kanal, uzman_tipi, marka_grubu_key, marka_grubu_adi, markalar FROM prim_bolum WHERE aktif=1"
     );
     // Mağaza başına uzman sayısını önce hesapla (senaryo seçimi için)
     const storeCount = new Map();
@@ -282,11 +304,22 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
       if (!mevcutUzman) yeniUzmanSet.add(normal);
       const [[uz]] = await conn.query("SELECT id FROM uzman WHERE normal_ad=?", [normal]);
 
-      // Senaryo (bolum) seçimi: kanal + grup adı (Dolce & Gabbana → DG vb.)
-      const kanal = ["SEPHORA", "BOYNER", "BEYMEN"].find((k) => bayi.includes(k)) || null;
+      // Senaryo (bolum) seçimi: kanal + alt_kanal + grup adı
+      // Bayi SEVIL → BEYMEN kanalında SEVIL alt_kanalı (Beymen'in Sevil noktası).
+      // Bayi BEYMEN → BEYMEN kanalında BEYMEN alt_kanalı (Beymen mağazası).
+      // Aksi halde DB'de aynı grup için iki bölüm varken (BEYMEN DG %1.5 vs SEVIL DG %1.0)
+      // rastgele biri seçilir; alt_kanal ayrımı bu bug'ı kapatır.
+      let kanal = ["SEPHORA", "BOYNER", "BEYMEN"].find((k) => bayi.includes(k)) || null;
+      let altKanal = null;
+      if (bayi === "SEVIL" || bayi.includes("SEVİL") || bayi.includes("SEVIL")) {
+        kanal = "BEYMEN";
+        altKanal = "SEVIL";
+      } else if (kanal === "BEYMEN") {
+        altKanal = "BEYMEN";
+      }
       const uzmanSayisi = storeCount.get(normalizeStore(pm)) || 1;
       const uzmanTipi = uzmanSayisi >= 2 ? "COK_UZMAN" : "TEK_UZMAN";
-      const bolum = eslestirBolum(bolumler, { kanal, grup, uzmanTipi });
+      const bolum = eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal });
       if (!bolum) { err++; errors.push(`Bölüm bulunamadı: ${pm} / ${grup}`); continue; }
 
       await conn.query(
@@ -366,6 +399,8 @@ async function importZeops(buffer, donemId, dosyaAdi) {
         donemId,
         String(pick(row, "Ziyaret ID") || "").trim() || null,
         uzmanId, uzmanHam || null,
+        String(ad).trim() || null,
+        String(soyad).trim() || null,
         magazaId, magazaHam || null,
         parseDate(pick(row, "İşlem Tarihi", "Islem Tarihi")),
         parseDate(pick(row, "Satış Tarihi", "Satis Tarihi")),
@@ -402,7 +437,7 @@ async function importZeops(buffer, donemId, dosyaAdi) {
 async function insertBeyanBatch(conn, batch) {
   await conn.query(
     `INSERT INTO satis_beyan
-     (donem_id, ziyaret_id, uzman_id, uzman_ham, magaza_id, magaza_ham, islem_tarihi, satis_tarihi,
+     (donem_id, ziyaret_id, uzman_id, uzman_ham, ad, soyad, magaza_id, magaza_ham, islem_tarihi, satis_tarihi,
       durum, barkod, kod, etiket, adet, fiyat, toplam, satis_notlari, uniq_kod_id,
       urun_id, urun_kimlik_id, eslesme_yontemi, eslesme_durum)
      VALUES ?`,

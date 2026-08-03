@@ -199,8 +199,7 @@ export default function Eslesmeyen() {
         </ul>
         <p className="ipucu" style={{ marginBottom: 0 }}>
           Uniq Kod ↔ Stok Liste için: <Link href="/uniq-fark">Uniq Kod Farkları</Link> ·
-          Atamalar için: <Link href="/atamalar">Uzman Atamaları</Link> ·
-          Dosya yüklemek için: <Link href="/yukle">Veri Yükleme</Link>
+          Dosya yüklemek için: <Link href="/yukle">Prim Hesaplama</Link>
         </p>
       </div>
 
@@ -336,8 +335,8 @@ export default function Eslesmeyen() {
             <div className="yukle-kart" style={{ marginTop: 20 }}>
               <h3 style={{ marginTop: 0 }}>Uzman / atama sorunları</h3>
               <p className="ipucu">
-                Çözüm: bu dönem için <Link href="/yukle">Uzman-Mağaza-Grup Excel</Link> yükleyin
-                veya <Link href="/atamalar">Uzman Atamaları</Link>’ndan kontrol edin.
+                Çözüm: bu dönem için <Link href="/yukle">Uzman-Mağaza-Grup Excel</Link> dosyasını
+                Prim Hesaplama ekranından yeniden yükleyin.
               </p>
               <table>
                 <thead>
