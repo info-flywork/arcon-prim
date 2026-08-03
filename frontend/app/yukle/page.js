@@ -130,28 +130,22 @@ export default function PrimHesaplama() {
         const simdi = new Date();
         const yil = simdi.getFullYear();
         const ay = simdi.getMonth() + 1;
+        // GET eksik ayları açar (Haziran→…→bu ay) ve kronolojik döner
         let liste = await fetch("/api/donemler").then((cevap) => cevap.json());
         if (!Array.isArray(liste)) throw new Error("Dönem listesi alınamadı");
 
-        let buAy = liste.find(
+        const buAy = liste.find(
           (item) => Number(item.yil) === yil && Number(item.ay) === ay
         );
-        if (!buAy) {
-          const cevap = await fetch("/api/donemler", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ yil, ay }),
-          });
-          buAy = await cevap.json();
-          if (!cevap.ok || buAy.hata) throw new Error(buAy.hata || "Bu ay açılamadı");
-          liste = await fetch("/api/donemler").then((yanit) => yanit.json());
-          buAy = liste.find((item) => Number(item.id) === Number(buAy.id)) || buAy;
-        }
+        if (!buAy) throw new Error("Güncel dönem açılamadı");
 
         setDonemler(liste);
         const queryDonem = Number(new URLSearchParams(window.location.search).get("donem") || 0) || null;
+        const ilkAcik = liste.find((item) => item.durum === "acik");
         const secili =
-          (queryDonem && liste.find((item) => Number(item.id) === queryDonem)) || buAy;
+          (queryDonem && liste.find((item) => Number(item.id) === queryDonem)) ||
+          ilkAcik ||
+          buAy;
         setAcikId(secili.id);
         await paneliYukle(secili.id);
       } catch (hata) {

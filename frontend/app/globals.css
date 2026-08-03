@@ -1060,6 +1060,163 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .rapor-indir:hover { background-position: 100% 50%; }
 .rapor-indir > span { font-size: 14px; }
 
+.rapor-sekme {
+  display: inline-flex; gap: 0; margin: 0 0 12px;
+  border: 1px solid var(--cizgi); border-radius: 10px; overflow: hidden;
+  background: #fff; box-shadow: var(--golge);
+}
+.rapor-sekme button {
+  appearance: none; border: 0; background: transparent;
+  padding: 9px 16px; font-size: 12px; font-weight: 700;
+  color: var(--metin-2); cursor: pointer;
+}
+.rapor-sekme button + button { border-left: 1px solid var(--cizgi); }
+.rapor-sekme button.aktif {
+  color: #fff;
+  background: linear-gradient(110deg, var(--rapor-mavi), var(--rapor-mor));
+}
+.rapor-kaynak-not {
+  margin: 0; color: var(--metin-2); font-size: 11.5px; line-height: 1.4;
+}
+.prim-calisma-araclar {
+  display: flex; flex-direction: column; gap: 10px; width: 100%;
+}
+.prim-calisma-filtre {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.prim-calisma-filtre input,
+.prim-calisma-filtre select {
+  min-height: 34px; padding: 6px 10px; border: 1px solid var(--cizgi);
+  border-radius: 8px; font-size: 12px; background: #fff;
+}
+.prim-calisma-filtre input { min-width: 220px; flex: 1; }
+.prim-calisma-pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin: 14px 0 8px; font-size: 12px; font-weight: 700; color: var(--metin-2);
+}
+.prim-calisma-wrap { max-height: 72vh; }
+.excel-tablo-wrap {
+  margin-top: 4px; border: 1px solid #333; border-radius: 4px;
+  overflow: auto; background: #fff;
+}
+.excel-tablo {
+  border-collapse: collapse; font-size: 11px;
+  font-family: Calibri, Arial, sans-serif;
+  width: 100%; min-width: 2400px;
+}
+.prim-calisma-tablo { min-width: 4200px; }
+
+.excel-filtre-kapsul { position: relative; }
+.excel-filtre-ozet {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px; margin: 8px 0 4px; font-size: 12px; font-weight: 600; color: var(--metin-2);
+}
+.excel-th-ic {
+  display: flex; align-items: flex-start; justify-content: center; gap: 4px;
+  white-space: pre-line;
+}
+.excel-filtre-btn {
+  flex: 0 0 auto; display: inline-grid; place-items: center;
+  width: 18px; height: 18px; margin-top: 1px; padding: 0;
+  border: 1px solid rgba(0,0,0,.18); border-radius: 3px;
+  background: rgba(255,255,255,.55); color: #334; cursor: pointer;
+}
+.excel-filtre-btn:hover { background: #fff; }
+.excel-filtre-btn.aktif {
+  background: #1a73e8; border-color: #1a73e8; color: #fff;
+}
+.excel-topla-btn {
+  flex: 0 0 auto; display: inline-grid; place-items: center;
+  width: 18px; height: 18px; margin-top: 1px; padding: 0;
+  border: 1px solid rgba(19,115,51,.35); border-radius: 3px;
+  background: #e8f8ef; color: #137333; font-size: 11px; font-weight: 800;
+  cursor: pointer; line-height: 1;
+}
+.excel-topla-btn:hover { background: #137333; color: #fff; }
+.excel-filtre-panel {
+  width: 280px; padding: 8px; border: 1px solid #c5cdd8; border-radius: 6px;
+  background: #fff; box-shadow: 0 10px 28px rgba(15, 28, 46, .18);
+  text-align: left; font-weight: 500; white-space: normal;
+  color: #222; font-family: system-ui, sans-serif;
+}
+.excel-filtre-baslik {
+  margin-bottom: 6px; font-size: 11px; font-weight: 700; color: #445;
+  white-space: pre-line;
+}
+.excel-filtre-ara {
+  width: 100%; margin-bottom: 6px; padding: 6px 8px;
+  border: 1px solid #c5cdd8; border-radius: 4px; font-size: 12px;
+}
+.excel-filtre-aksyon {
+  display: flex; gap: 8px; margin-bottom: 6px;
+}
+.excel-filtre-aksyon button {
+  border: 0; background: none; color: #1a73e8; font-size: 11px;
+  font-weight: 700; cursor: pointer; padding: 0;
+}
+.excel-filtre-liste {
+  max-height: 220px; overflow: auto; border: 1px solid #e5e9ef;
+  border-radius: 4px; margin-bottom: 8px;
+}
+.excel-filtre-satir {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; font-size: 12px; cursor: pointer;
+}
+.excel-filtre-satir:hover { background: #f3f6fa; }
+.excel-filtre-satir span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.excel-filtre-bos {
+  padding: 12px 8px; color: #889; font-size: 12px; text-align: center;
+}
+.excel-filtre-footer {
+  display: flex; justify-content: flex-end; gap: 6px;
+}
+.excel-filtre-footer .btn { padding: 5px 10px; font-size: 11px; }
+.excel-hucre-secili {
+  background: #cfe2ff !important;
+  outline: 1px solid #7aa7e8;
+}
+.excel-secim-cubuk {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid #b7e1cd; border-radius: 999px;
+  background: #e8f8ef; box-shadow: 0 10px 28px rgba(20, 80, 50, .22);
+  font-size: 13px;
+}
+.excel-secim-cubuk-sabit {
+  position: fixed; z-index: 1200;
+  left: 50%; bottom: 18px;
+  transform: translateX(-50%);
+  max-width: min(920px, calc(100vw - 24px));
+}
+.excel-secim-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 999px;
+  background: #137333; color: #fff; font-weight: 700;
+}
+.excel-secim-pill.soft {
+  background: #fff; color: #137333; border: 1px solid #b7e1cd;
+}
+.excel-secim-ipucu { margin-left: 4px; color: #4a7a5f; font-size: 11px; }
+.excel-secim-kapat {
+  margin-left: 4px; width: 24px; height: 24px; border: 0; border-radius: 999px;
+  background: #fff; color: #137333; font-size: 16px; font-weight: 700; cursor: pointer;
+  line-height: 1;
+}
+.excel-kopya-toast {
+  position: fixed; z-index: 1300;
+  left: 50%; top: 18px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #1f2937; color: #fff;
+  font-size: 12px; font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  pointer-events: none;
+}
+.excel-secilebilir td { user-select: none; }
+
 .rapor-filtre-paneli {
   display: grid; grid-template-columns: minmax(230px, .8fr) minmax(240px, 1fr) auto;
   align-items: center; gap: 16px; padding: 15px 17px; margin-bottom: 13px;

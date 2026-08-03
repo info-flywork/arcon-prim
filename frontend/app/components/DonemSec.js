@@ -13,22 +13,14 @@ export default function DonemSec({ value, onChange }) {
         const simdi = new Date();
         const yil = simdi.getFullYear();
         const ay = simdi.getMonth() + 1;
-        let liste = await fetch("/api/donemler").then((cevap) => cevap.json());
+        // GET: ilk dönemden bugüne eksik ayları açar, kronolojik döner
+        const liste = await fetch("/api/donemler").then((cevap) => cevap.json());
         if (!Array.isArray(liste)) throw new Error("Dönemler alınamadı");
 
-        let guncel = liste.find(
+        const guncel = liste.find(
           (donem) => Number(donem.yil) === yil && Number(donem.ay) === ay
         );
-        if (!guncel) {
-          const cevap = await fetch("/api/donemler", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ yil, ay }),
-          });
-          guncel = await cevap.json();
-          if (!cevap.ok || guncel.hata) throw new Error(guncel.hata || "Güncel dönem açılamadı");
-          liste = await fetch("/api/donemler").then((cevap) => cevap.json());
-        }
+        if (!guncel) throw new Error("Güncel dönem açılamadı");
 
         setDonemler(liste);
         const queryVar = queryDonem && liste.some((donem) => Number(donem.id) === queryDonem);
