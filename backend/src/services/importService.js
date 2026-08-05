@@ -15,8 +15,6 @@ const {
   identityCandidates,
   loadProductResolver,
   resolveProduct,
-  addIdentifier,
-  createProduct,
 } = require("./productService");
 
 // Bir sekmede beklenen başlıkların geçtiği satırı bulur (ilk 50 satır taranır).
@@ -671,26 +669,23 @@ async function importSiralama(buffer, donemId, dosyaAdi) {
 }
 
 // ---- 6. Stok Liste -> kanonik ürün + alias tamamlama -----------------------
-async function withLockRetry(fn, maxAttempts = 6) {
-  let last;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      last = e;
-      const lock =
-        e.code === "ER_LOCK_WAIT_TIMEOUT" ||
-        e.errno === 1205 ||
-        e.code === "ER_LOCK_DEADLOCK" ||
-        e.errno === 1213;
-      if (!lock || attempt === maxAttempts - 1) throw e;
-      await new Promise((r) => setTimeout(r, 150 * (attempt + 1) + Math.random() * 200));
-    }
-  }
-  throw last;
+async function flushKimlikBatch(conn, batch) {
+  if (!batch.length) return;
+  const placeholders = batch.map(() => "(?,?,?,?,?)").join(",");
+  const values = batch.flatMap((item) => [
+    item.urun_id, item.tip, item.deger_ham, item.deger_normalize, item.kaynak,
+  ]);
+  // Aynı kimlik başka ürüne bağlıysa IGNORE eder; çakışmalar ayrıca sayılır
+  await conn.query(
+    `INSERT IGNORE INTO urun_kimlik (urun_id, tip, deger_ham, deger_normalize, kaynak)
+     VALUES ${placeholders}`,
+    values
+  );
+  batch.length = 0;
 }
 
-async function importStok(buffer, donemId, dosyaAdi) {
+async function importStok(buffer, donemId, dosyaAdi, opts = {}) {
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : null;
   const rows = readSheet(
     buffer,
     ["STOK KODU", "STOK ADI", "MARKA", "BARKOD 1", "UNIQ KOD"],
@@ -699,42 +694,124 @@ async function importStok(buffer, donemId, dosyaAdi) {
   const formatHata = formatKontrol(rows, "stok");
   if (formatHata) return formatHata;
 
-  // Tek mega-transaction tüm dosyayı kilitleyip concurrent job'larla
-  // Lock wait timeout üretiyordu — küçük batch'lerle commit ediyoruz.
-  const BATCH = 40;
+  // Her satır değerlendirilir. Hız için:
+  // - zaten tam eşleşen satırda ekstra INSERT yapılmaz (atlanan; satır yok sayılmaz)
+  // - yeni ürün/kimlikler toplu INSERT ile yazılır
+  const PRODUCT_BATCH = 80;
+  const KIMLIK_BATCH = 200;
   const conn = await pool.getConnection();
   let eklenen = 0, aliasEklenen = 0, atlanan = 0, err = 0;
-  let batchCount = 0;
-  let txOpen = false;
-
-  async function ensureTx() {
-    if (!txOpen) {
-      await conn.beginTransaction();
-      txOpen = true;
-    }
-  }
-  async function commitBatch() {
-    if (txOpen) {
-      await conn.commit();
-      txOpen = false;
-      batchCount = 0;
-    }
-  }
 
   try {
     try {
       await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      await conn.query("SET SESSION innodb_lock_wait_timeout = 10");
+      await conn.query("SET SESSION innodb_lock_wait_timeout = 15");
     } catch {
       /* hosting kısıtlı olabilir */
     }
 
+    onProgress?.({ asama: "hazirlik", yapilan: 0, toplam: rows.length });
+
     const resolver = await loadProductResolver(conn);
     const [products] = await conn.query("SELECT id, uniq_kod, durum, marka, urun_adi FROM urun");
     const productByUniq = new Map(products.map((product) => [product.uniq_kod, product]));
+    const productById = new Map(products.map((product) => [Number(product.id), product]));
+
+    const pendingProducts = []; // { canonical, marka, urun_adi, aks, cinsiyet, durum, identifiers[] }
+    const pendingByCanonical = new Map();
+    const pendingKimlik = [];
+    const pendingUniqUpdate = []; // { productId, canonical, activate }
+    const pendingCakisma = [];
+
+    function queueKimlik(urunId, identifier, product) {
+      if (resolver.identifierMap.has(identifier.key)) {
+        const existing = resolver.identifierMap.get(identifier.key);
+        if (Number(existing.urun_id) !== Number(urunId)) {
+          err++;
+          return false;
+        }
+        return false; // zaten bu üründe
+      }
+      pendingKimlik.push({
+        urun_id: urunId,
+        tip: identifier.tip,
+        deger_ham: identifier.raw,
+        deger_normalize: identifier.normalized,
+        kaynak: "stok_import",
+      });
+      if (product?.durum === "aktif" || product?.durum === "inceleme") {
+        resolver.identifierMap.set(identifier.key, {
+          identifier_id: null,
+          urun_id: urunId,
+          tip: identifier.tip,
+          deger_normalize: identifier.normalized,
+          uniq_kod: product.uniq_kod,
+          marka: product.marka,
+          urun_adi: product.urun_adi,
+          durum: product.durum,
+        });
+      }
+      return true;
+    }
+
+    async function flushProducts() {
+      if (!pendingProducts.length) return;
+      await conn.beginTransaction();
+      try {
+        for (let i = 0; i < pendingProducts.length; i += PRODUCT_BATCH) {
+          const chunk = pendingProducts.slice(i, i + PRODUCT_BATCH);
+          const placeholders = chunk.map(() => "(?,?,?,?,?,?)").join(",");
+          const values = chunk.flatMap((item) => [
+            item.canonical, item.marka, item.urun_adi, item.aks, item.cinsiyet, item.durum,
+          ]);
+          const [result] = await conn.query(
+            `INSERT INTO urun (uniq_kod, marka, urun_adi, aks, cinsiyet, durum)
+             VALUES ${placeholders}`,
+            values
+          );
+          let id = Number(result.insertId);
+          for (const item of chunk) {
+            const product = {
+              id,
+              uniq_kod: item.canonical,
+              durum: item.durum,
+              marka: item.marka,
+              urun_adi: item.urun_adi,
+            };
+            productByUniq.set(item.canonical, product);
+            productById.set(id, product);
+            eklenen++;
+            for (const identifier of item.identifiers) {
+              if (queueKimlik(id, identifier, product)) aliasEklenen++;
+            }
+            id += 1;
+          }
+        }
+        await flushKimlikBatch(conn, pendingKimlik);
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      }
+      pendingProducts.length = 0;
+    }
+
+    async function flushKimlik() {
+      if (!pendingKimlik.length) return;
+      await conn.beginTransaction();
+      try {
+        while (pendingKimlik.length) {
+          const chunk = pendingKimlik.splice(0, KIMLIK_BATCH);
+          await flushKimlikBatch(conn, chunk);
+        }
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      }
+    }
 
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      await ensureTx();
       const row = rows[rowIndex];
       const barkod = cleanRaw(pick(row, "BARKOD 1", "BARKOD")) || null;
       const stokKodu = pick(row, "STOK KODU");
@@ -748,18 +825,13 @@ async function importStok(buffer, donemId, dosyaAdi) {
       const match = resolveProduct(resolver, { barcode: barkod, stockCode: stokKodu });
       if (match.status === "urun_cakisma") {
         const first = identifiers[0];
-        await withLockRetry(() => conn.query(
-          `INSERT INTO urun_esleme_cakisma
-             (tip,deger_ham,deger_normalize,kaynak,aday_urunler_json)
-           VALUES (?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE
-             aday_urunler_json=VALUES(aday_urunler_json), kaynak=VALUES(kaynak), durum='acik'`,
-          [first.tip, first.raw, first.normalized, `stok_import:${dosyaAdi}`,
-            JSON.stringify(match.productIds.map((productId) => ({ productId, row: rowIndex + 2 })))]
-        ));
+        pendingCakisma.push({
+          tip: first.tip,
+          raw: first.raw,
+          normalized: first.normalized,
+          json: JSON.stringify(match.productIds.map((productId) => ({ productId, row: rowIndex + 2 }))),
+        });
         err++;
-        batchCount++;
-        if (batchCount >= BATCH) await commitBatch();
         continue;
       }
 
@@ -771,89 +843,129 @@ async function importStok(buffer, donemId, dosyaAdi) {
         err++;
         continue;
       }
+
       let product = match.status === "ok"
-        ? products.find((item) => Number(item.id) === Number(match.productId))
+        ? productById.get(Number(match.productId))
         : productByUniq.get(canonicalCode);
 
+      // Tüm kimlikler zaten bu ürüne bağlıysa DB yazmadan say (satır yine işlendi)
+      if (product && match.status === "ok") {
+        const eksikKimlik = identifiers.filter((id) => !resolver.identifierMap.has(id.key));
+        const uniqDegisecek = product.uniq_kod !== canonicalCode;
+        if (!eksikKimlik.length && !uniqDegisecek) {
+          atlanan++;
+          if (rowIndex % 500 === 0) {
+            onProgress?.({ asama: "tarama", yapilan: rowIndex + 1, toplam: rows.length });
+          }
+          continue;
+        }
+      }
+
       if (!product) {
-        const productId = await withLockRetry(() => createProduct({
-          uniq_kod: canonicalCode,
-          marka: pick(row, "MARKA") || "Bilinmiyor",
-          urun_adi: pick(row, "UNIQ ADI") || stokAdi || `İncelenecek stok ${rowIndex + 2}`,
-          aks: pick(row, "AKS"),
-          cinsiyet: pick(row, "CİNSİYET", "CINSIYET"),
-          durum: uniq ? "aktif" : "inceleme",
-        }, conn));
-        product = {
-          id: productId,
-          uniq_kod: canonicalCode,
-          durum: uniq ? "aktif" : "inceleme",
+        // Aynı dosyada daha önce kuyruğa alınan uniq'i tekrar ekleme
+        const queued = pendingByCanonical.get(canonicalCode);
+        if (queued) {
+          for (const identifier of identifiers) {
+            if (!queued.identifiers.some((x) => x.key === identifier.key)) {
+              queued.identifiers.push(identifier);
+            }
+          }
+          // Ürün henüz INSERT edilmedi; kimlikler flushProducts'ta eklenecek
+          continue;
+        }
+        const item = {
+          canonical: canonicalCode,
           marka: cleanRaw(pick(row, "MARKA")) || "Bilinmiyor",
-          urun_adi: cleanRaw(pick(row, "UNIQ ADI") || stokAdi),
+          urun_adi: cleanRaw(pick(row, "UNIQ ADI") || stokAdi) || `İncelenecek stok ${rowIndex + 2}`,
+          aks: cleanRaw(pick(row, "AKS")) || null,
+          cinsiyet: cleanRaw(pick(row, "CİNSİYET", "CINSIYET")) || null,
+          durum: uniq ? "aktif" : "inceleme",
+          identifiers: [...identifiers],
         };
-        products.push(product);
-        productByUniq.set(canonicalCode, product);
-        eklenen++;
-      } else if (product.uniq_kod !== canonicalCode) {
-        // Mevcut ürünün uniq'ini Stok Liste kuralına çek (çakışma yoksa)
-        const [[owner]] = await withLockRetry(() => conn.query(
-          "SELECT id FROM urun WHERE uniq_kod=? AND id<>? LIMIT 1",
-          [canonicalCode, product.id]
-        ));
-        if (!owner) {
-          await withLockRetry(() => conn.query(
-            "UPDATE urun SET uniq_kod=?, durum=IF(?,'aktif',durum) WHERE id=?",
-            [canonicalCode, uniq ? 1 : 0, product.id]
-          ));
+        pendingProducts.push(item);
+        pendingByCanonical.set(canonicalCode, item);
+        if (pendingProducts.length >= PRODUCT_BATCH) {
+          await flushProducts();
+          pendingByCanonical.clear();
+        }
+      } else {
+        if (product.uniq_kod !== canonicalCode) {
+          pendingUniqUpdate.push({
+            productId: product.id,
+            canonical: canonicalCode,
+            activate: !!uniq,
+          });
           productByUniq.delete(product.uniq_kod);
           product.uniq_kod = canonicalCode;
           productByUniq.set(canonicalCode, product);
         }
-      }
-
-      let newAlias = 0;
-      for (const identifier of identifiers) {
-        try {
-          const existed = resolver.identifierMap.has(identifier.key);
-          const identifierId = await withLockRetry(() => addIdentifier(conn, product.id, {
-            tip: identifier.tip,
-            deger: identifier.raw,
-            kaynak: "stok_import",
-          }));
-          if (!existed) newAlias++;
-          if (product.durum === "aktif") {
-            resolver.identifierMap.set(identifier.key, {
-              identifier_id: identifierId,
-              urun_id: product.id,
-              tip: identifier.tip,
-              deger_normalize: identifier.normalized,
-              uniq_kod: product.uniq_kod,
-              marka: product.marka,
-              urun_adi: product.urun_adi,
-            });
-          }
-        } catch (error) {
-          if (error.status === 409) {
-            err++;
-            continue;
-          }
-          throw error;
+        let newAlias = 0;
+        for (const identifier of identifiers) {
+          if (queueKimlik(product.id, identifier, product)) newAlias++;
         }
+        aliasEklenen += newAlias;
+        if (!newAlias && match.status === "ok" && product.uniq_kod === canonicalCode) atlanan++;
+        if (pendingKimlik.length >= KIMLIK_BATCH) await flushKimlik();
       }
-      aliasEklenen += newAlias;
-      if (!newAlias && match.status === "ok") atlanan++;
 
-      batchCount++;
-      if (batchCount >= BATCH) await commitBatch();
+      if (rowIndex % 500 === 0) {
+        onProgress?.({ asama: "tarama", yapilan: rowIndex + 1, toplam: rows.length });
+      }
     }
 
-    await ensureTx();
+    await flushProducts();
+    await flushKimlik();
+
+    // Uniq güncellemeleri (az sayıda beklenir)
+    if (pendingUniqUpdate.length) {
+      await conn.beginTransaction();
+      try {
+        for (const item of pendingUniqUpdate) {
+          const [[owner]] = await conn.query(
+            "SELECT id FROM urun WHERE uniq_kod=? AND id<>? LIMIT 1",
+            [item.canonical, item.productId]
+          );
+          if (!owner) {
+            await conn.query(
+              "UPDATE urun SET uniq_kod=?, durum=IF(?,'aktif',durum) WHERE id=?",
+              [item.canonical, item.activate ? 1 : 0, item.productId]
+            );
+          }
+        }
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      }
+    }
+
+    if (pendingCakisma.length) {
+      await conn.beginTransaction();
+      try {
+        for (const item of pendingCakisma) {
+          await conn.query(
+            `INSERT INTO urun_esleme_cakisma
+               (tip,deger_ham,deger_normalize,kaynak,aday_urunler_json)
+             VALUES (?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE
+               aday_urunler_json=VALUES(aday_urunler_json), kaynak=VALUES(kaynak), durum='acik'`,
+            [item.tip, item.raw, item.normalized, `stok_import:${dosyaAdi}`, item.json]
+          );
+        }
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      }
+    }
+
     await conn.query(
       "INSERT INTO import_log (donem_id, tip, dosya_adi, satir_sayisi, hatali_satir, mesaj) VALUES (?,?,?,?,?,?)",
       [donemId || null, "uniq_kod", dosyaAdi, rows.length, err,
         `${eklenen} yeni ürün, ${aliasEklenen} yeni kimlik; ${atlanan} satır değişmedi`]
     );
-    await commitBatch();
+
+    onProgress?.({ asama: "bitti", yapilan: rows.length, toplam: rows.length });
 
     return {
       toplam: rows.length,
@@ -861,12 +973,6 @@ async function importStok(buffer, donemId, dosyaAdi) {
       eslesmeyen: err,
       mesaj: `${eklenen} yeni ürün, ${aliasEklenen} yeni barkod/referans eklendi; ${atlanan} satır zaten günceldi`,
     };
-  } catch (e) {
-    if (txOpen) {
-      try { await conn.rollback(); } catch { /* ignore */ }
-      txOpen = false;
-    }
-    throw e;
   } finally {
     conn.release();
   }

@@ -251,7 +251,14 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
   setImmediate(() => {
     (async () => {
       try {
-        const sonuc = await fn(buffer, donemId, dosyaAdi);
+        const sonuc = await fn(buffer, donemId, dosyaAdi, {
+          onProgress: (ilerleme) => {
+            const job = importJobs.get(jobId);
+            if (job && job.durum === "isleniyor") {
+              importJobs.set(jobId, { ...job, ilerleme });
+            }
+          },
+        });
         importJobs.set(jobId, {
           durum: "bitti",
           tip,
@@ -281,8 +288,7 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
 }));
 
 /** Takılı import kilidini elle aç (stok 'işleniyor' diye takılırsa). */
-app.post("/api/import-kilit-ac/:tip?", wrap(async (req, res) => {
-  const tip = req.params.tip || "stok";
+async function importKilitAc(tip) {
   const vardi = aktifImportTipleri.has(tip);
   aktifImportTipleri.delete(tip);
   for (const [id, job] of importJobs) {
@@ -295,7 +301,13 @@ app.post("/api/import-kilit-ac/:tip?", wrap(async (req, res) => {
       });
     }
   }
-  res.json({ ok: true, tip, kilitAcildi: vardi, mesaj: vardi ? `${tip} kilidi açıldı.` : `${tip} kilidi zaten yoktu.` });
+  return { ok: true, tip, kilitAcildi: vardi, mesaj: vardi ? `${tip} kilidi açıldı.` : `${tip} kilidi zaten yoktu.` };
+}
+app.post("/api/import-kilit-ac", wrap(async (req, res) => {
+  res.json(await importKilitAc(String(req.body?.tip || req.query?.tip || "stok")));
+}));
+app.post("/api/import-kilit-ac/:tip", wrap(async (req, res) => {
+  res.json(await importKilitAc(req.params.tip || "stok"));
 }));
 
 app.get("/api/import-job/:jobId", wrap(async (req, res) => {

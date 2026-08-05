@@ -304,6 +304,14 @@ export default function PrimHesaplama() {
       }
       if (job.durum === "bitti") return { tamamlandi: true, sonuc: job.sonuc || {} };
       if (job.durum === "hata") throw new Error(job.hata || "Dosya işlenemedi");
+      if (job.ilerleme?.toplam) {
+        const y = job.ilerleme.yapilan || 0;
+        const t = job.ilerleme.toplam;
+        setMesaj({
+          tip: "notr",
+          metin: `${TIP_ADI[tip]} işleniyor… ${y.toLocaleString("tr-TR")} / ${t.toLocaleString("tr-TR")}`,
+        });
+      }
     }
     throw new Error("Yükleme çok uzun sürdü. Sayfayı yenileyip sonucu kontrol edin.");
   }
