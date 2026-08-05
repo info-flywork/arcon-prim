@@ -199,7 +199,17 @@ export default function PrimHesaplama() {
         method: "POST",
         body: form,
       });
-      const veri = await cevap.json();
+      const ham = await cevap.text();
+      let veri = {};
+      try {
+        veri = ham ? JSON.parse(ham) : {};
+      } catch {
+        throw new Error(
+          cevap.ok
+            ? "Sunucu beklenmeyen yanıt döndü"
+            : "Yükleme zaman aşımına uğradı veya sunucu hata verdi. Sayfayı yenileyip tekrar deneyin."
+        );
+      }
       if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Dosya yüklenemedi");
       setSonuclar((onceki) => ({ ...onceki, [tip]: veri }));
       await paneliYukle(acikId);

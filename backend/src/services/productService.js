@@ -335,7 +335,7 @@ async function tamamlaEksikAtamalar(conn, donemId) {
     await conn.query(
       `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi, pay_orani)
        VALUES (?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE bolum_id=VALUES(bolum_id)`,
+       ON DUPLICATE KEY UPDATE pay_orani=VALUES(pay_orani)`,
       [donemId, row.uzman_id, row.magaza_id, kaynak.bolum_id, kaynak.grup_adi || null, kaynak.pay_orani]
     );
     eklenen += 1;

@@ -156,8 +156,10 @@ export default function PrimRaporu() {
   useEffect(() => {
     if (gorunum !== "satirlar" || !donem) return;
     const ac = new AbortController();
+    let iptal = false;
     setYukleniyor(true);
     setHata(null);
+    setSatirVeri(null); // eski filtre/satırlar ekranda kalmasın
     const aktifFiltre = filtreAktifMi(kolonFiltre);
     const qs = new URLSearchParams({
       sayfa: String(sayfa),
@@ -170,16 +172,20 @@ export default function PrimRaporu() {
     fetch(`/api/prim-raporu/${donem}/satirlar?${qs}`, { signal: ac.signal })
       .then(async (r) => {
         const d = await r.json();
+        if (iptal) return;
         if (!r.ok) throw new Error(d.hata || "Satır satır rapor yüklenemedi");
         setSatirVeri(d);
         setYukleniyor(false);
       })
       .catch((e) => {
-        if (e.name === "AbortError") return;
+        if (e.name === "AbortError" || iptal) return;
         setHata(e.message);
         setYukleniyor(false);
       });
-    return () => ac.abort();
+    return () => {
+      iptal = true;
+      ac.abort();
+    };
   }, [gorunum, donem, sayfa, arama, aciklama, kolonFiltre]);
 
   function hucreDeger(satir, kolon) {
@@ -397,7 +403,7 @@ export default function PrimRaporu() {
           <ExcelFiltreTablo
             kolonlar={satirKolonlar}
             satirlar={satirVeri.satirlar}
-            rowKey={(s) => s.beyan_id}
+            rowKey={(s, i) => `${s.beyan_id || "x"}-${s.prim_grup || ""}-${i}`}
             degerAl={satirDegerAl}
             yaz={satirYaz}
             satirStil={(s) => raporSatirRengi(s.rapor_aciklama, s.satis_turu)}

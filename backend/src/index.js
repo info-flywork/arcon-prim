@@ -5,7 +5,8 @@ require("dotenv").config();
 
 const pool = require("./db");
 const { importZeops, importSellout, importHedef, importSiralama, importUzmanMagaza, importStok } = require("./services/importService");
-const { hesapla } = require("./services/hesapService");
+const { hesapla, markaGrubunda, genisletMarkalar } = require("./services/hesapService");
+const { normalizeName } = require("./util");
 const {
   normalizeCanonicalCode,
   createProduct,
@@ -485,7 +486,7 @@ app.post("/api/atamalar", wrap(async (req, res) => {
   const [r] = await pool.query(
     `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi)
      VALUES (?,?,?,?,?)
-     ON DUPLICATE KEY UPDATE bolum_id=VALUES(bolum_id), grup_adi=VALUES(grup_adi)`,
+     ON DUPLICATE KEY UPDATE grup_adi=VALUES(grup_adi)`,
     [donem_id, uzman_id, magaza_id, bolum_id, grup_adi || null]
   );
   const [[meta]] = await pool.query(
@@ -642,8 +643,9 @@ app.post("/api/hesapla/:donemId", wrap(async (req, res) => {
   const [[donem]] = await pool.query("SELECT ad FROM donem WHERE id=?", [donemId]);
   // Hesap öncesi: eksik atamaları tamamla + ürün eşlemelerini güncelle
   const esleme = await remapPeriod(donemId);
-  const sonuc = await hesapla(donemId);
-  await audit("donem", donemId, "hesap", { donem: donem?.ad, esleme, ...sonuc });
+  const mukerrerMod = req.body?.mukerrer_mod || req.query.mukerrer_mod;
+  const sonuc = await hesapla(donemId, mukerrerMod ? { mukerrerMod } : {});
+  await audit("donem", donemId, "hesap", { donem: donem?.ad, esleme, mukerrerMod: mukerrerMod || null, ...sonuc });
   res.json({ ...sonuc, esleme });
 }));
 
@@ -942,26 +944,50 @@ async function primRaporuVerisi(donemId) {
   // Ana veri: prim_ozet + uzman + magaza + prim_bolum
   const [rows] = await pool.query(
     `SELECT o.*, u.ad_soyad, m.prim_magaza, m.bayi,
-            b.bolum_adi, b.alt_kanal, b.kanal, b.marka_grubu_adi, b.markalar
+            b.bolum_adi, b.alt_kanal, b.kanal, b.marka_grubu_adi, b.markalar,
+            a.grup_adi
        FROM prim_ozet o
        JOIN uzman u ON u.id=o.uzman_id
        JOIN magaza m ON m.id=o.magaza_id
        LEFT JOIN prim_bolum b ON b.id=o.bolum_id
+       LEFT JOIN uzman_atama a
+         ON a.donem_id=o.donem_id AND a.uzman_id=o.uzman_id
+        AND a.magaza_id=o.magaza_id AND a.bolum_id=o.bolum_id
       WHERE o.donem_id=?
       ORDER BY u.ad_soyad, m.prim_magaza`,
     [donemId]
   );
 
-  // Hedef verisi: her mağaza × marka için hedef ciro toplamı
+  // Hedef verisi: mağaza × marka (K kolonu sadece uzmanın grup markalarını toplar)
   const [hedefRows] = await pool.query(
-    `SELECT magaza_id, SUM(hedef_ciro) toplam FROM hedef WHERE donem_id=?
-      GROUP BY magaza_id`,
+    `SELECT magaza_id, marka, hedef_ciro FROM hedef WHERE donem_id=? AND magaza_id IS NOT NULL`,
     [donemId]
   );
-  const hedefByMagaza = new Map(hedefRows.map((r) => [r.magaza_id, Number(r.toplam)]));
+  const hedefByMagazaMarka = new Map(); // magazaId -> [{marka, hedef}]
+  for (const r of hedefRows) {
+    if (!hedefByMagazaMarka.has(r.magaza_id)) hedefByMagazaMarka.set(r.magaza_id, []);
+    hedefByMagazaMarka.get(r.magaza_id).push({ marka: r.marka, hedef: Number(r.hedef_ciro) });
+  }
+
+  // Sell-out Marka Grup eşlemesi (hesap motoruyla aynı)
+  const [mgRows] = await pool.query(
+    `SELECT DISTINCT marka, marka_grup FROM sellout
+      WHERE donem_id=? AND marka IS NOT NULL AND marka_grup IS NOT NULL`,
+    [donemId]
+  );
+  const markaGrupMap = new Map(mgRows.map((r) => [normalizeName(r.marka), r.marka_grup]));
 
   // Her satırı Excel kolonlarına dağıt
   function normalize(s) { return String(s || "").toLocaleUpperCase("tr-TR").trim(); }
+
+  function grupHedefToplami(magazaId, markalarJson) {
+    const liste = hedefByMagazaMarka.get(magazaId) || [];
+    let toplam = 0;
+    for (const h of liste) {
+      if (markaGrubunda(markalarJson, h.marka, markaGrupMap)) toplam += h.hedef;
+    }
+    return toplam;
+  }
 
   function satirYap(r) {
     const E = Number(r.prime_esas_toplam || 0);
@@ -976,6 +1002,7 @@ async function primRaporuVerisi(donemId) {
     const altKanal = normalize(r.alt_kanal);
     let markalar = [];
     try { markalar = Array.isArray(r.markalar) ? r.markalar : JSON.parse(r.markalar || "[]"); } catch {}
+    markalar = genisletMarkalar(markalar, r.grup_adi);
     const grup = normalize(markalar.join(" "));
 
     // F: baseline %1 (herkes)
@@ -1028,10 +1055,11 @@ async function primRaporuVerisi(donemId) {
     const ciroHedefiTuttu = !!(ciroHedefDetay && ciroHedefDetay.tuttu);
     if (ciroHedefiTuttu) L = +(E * 0.005).toFixed(2);
 
-    // K: Hedefler — uzmanın grubundaki marka hedefleri (tüm mağaza toplamı değil)
+    // K: Hedefler — SADECE uzmanın grup markaları (örn. DG → sadece DOLCE & GABBANA).
+    // Eskiden ciro_hedefi kuralı yoksa tüm mağaza hedefleri toplanıyordu (Bilici 7.1M bug'ı).
     const K = ciroHedefDetay && ciroHedefDetay.hedefToplam != null
       ? Number(ciroHedefDetay.hedefToplam)
-      : (hedefByMagaza.get(r.magaza_id) || 0);
+      : grupHedefToplami(r.magaza_id, markalar);
 
     // M-P: Dior kuralları (sadece Dior grubu için)
     let M = 0, N = 0, O = 0, P = 0;
@@ -1252,6 +1280,54 @@ function satisTuruHesapla(eslesmeDurum, hesapId) {
   return "Prim Hesaplama Dışı";
 }
 
+/**
+ * Excel NOKTA UZMAN SAYISI: mağazadaki uzman adedi.
+ * BOYNER'da DIOR uzmanları ayrı sayılır — parfüm noktası = DIOR dışı uzman sayısı
+ * (ANKAMALL vb. Excel'de 4; sistem pay_orani=1 göstermesin diye).
+ */
+async function loadNoktaUzmanSayisiMap(donemId) {
+  const [rows] = await pool.query(
+    `SELECT a.magaza_id, m.bayi, a.uzman_id, a.grup_adi
+     FROM uzman_atama a
+     JOIN magaza m ON m.id = a.magaza_id
+     WHERE a.donem_id = ?`,
+    [donemId]
+  );
+  const byMag = new Map();
+  for (const r of rows) {
+    if (!byMag.has(r.magaza_id)) {
+      byMag.set(r.magaza_id, { bayi: r.bayi || "", all: new Set(), nonDior: new Set() });
+    }
+    const g = byMag.get(r.magaza_id);
+    g.all.add(r.uzman_id);
+    if (!/DIOR/i.test(String(r.grup_adi || ""))) g.nonDior.add(r.uzman_id);
+  }
+  const out = new Map();
+  for (const [magazaId, g] of byMag) {
+    const bayi = String(g.bayi).toLocaleUpperCase("tr-TR");
+    const total = g.all.size;
+    const nonDior = g.nonDior.size;
+    // BOYNER: Excel ile aynı — DIOR hariç nokta sayısı (0 ise toplam)
+    if (bayi.includes("BOYNER")) {
+      out.set(magazaId, nonDior > 0 ? nonDior : total);
+    } else {
+      out.set(magazaId, total);
+    }
+  }
+  return out;
+}
+
+function applyNoktaUzmanSayisi(rows, noktaMap) {
+  for (const r of rows) {
+    if (r.magaza_id != null && noktaMap.has(r.magaza_id)) {
+      r.nokta_uzman_sayisi = noktaMap.get(r.magaza_id);
+    } else {
+      r.nokta_uzman_sayisi = null;
+    }
+  }
+  return rows;
+}
+
 /** Zeops Ad/Soyad yoksa ad_soyad'dan ayır (son kelime = soyad). */
 function adSoyadAyir(full, ad, soyad) {
   const a = String(ad || "").trim();
@@ -1298,47 +1374,13 @@ function satirSatisPrimleri(primeEsas, meta) {
 }
 
 /**
- * Aynı ziyaret + uzman + mağaza + ürün → tek satır (adet toplanır).
- * Ziyaret ID korunur. Uzman Toplam Satış = uzmanın o üründeki tüm ziyaret toplamı.
+ * Excel Prim Çalışma gibi: her Zeops beyanı ayrı satır (birleştirme yok).
+ * Uzman Toplam Satış / Kontrol yine uzman × mağaza × ürün üzerinden hesaplanır.
  */
 function primSatirlariBirlesir(satirlar) {
-  const map = new Map();
-  const sirali = [];
-  for (const s of satirlar) {
-    const urunAnahtar =
-      (s.barkod && `b:${s.barkod}`) ||
-      (s.uniq_kod && `q:${s.uniq_kod}`) ||
-      (s.kod && `k:${s.kod}`) ||
-      (s.urun_id && `u:${s.urun_id}`) ||
-      `e:${s.etiket || ""}|${s.beyan_id || ""}`;
-    // Ziyaret ID birleştirme anahtarında — boşaltılmaz
-    const key = `${s.ziyaret_id || ""}|${s.uzman_id || s.ad_soyad}|${s.magaza_id || s.magaza_ham || ""}|${urunAnahtar}`;
-    if (!map.has(key)) {
-      const kopya = { ...s };
-      map.set(key, kopya);
-      sirali.push(kopya);
-      continue;
-    }
-    const t = map.get(key);
-    t.adet = Number(t.adet || 0) + Number(s.adet || 0);
-    t.toplam = Number(t.toplam || 0) + Number(s.toplam || 0);
-    t.prim_adet = Number(t.prim_adet || 0) + Number(s.prim_adet || 0);
-    t.prime_esas_tutar = Number(t.prime_esas_tutar || 0) + Number(s.prime_esas_tutar || 0);
-    if (t.fiyat == null && s.fiyat != null) t.fiyat = s.fiyat;
-    if (t.birim_ciro == null && s.birim_ciro != null) t.birim_ciro = s.birim_ciro;
-    if (!t.islem_tarihi && s.islem_tarihi) t.islem_tarihi = s.islem_tarihi;
-    if (!t.satis_tarihi && s.satis_tarihi) t.satis_tarihi = s.satis_tarihi;
-    if (!t.satis_notlari && s.satis_notlari) t.satis_notlari = s.satis_notlari;
-    const eskiOk = String(t.rapor_aciklama || "").startsWith("Ok");
-    const yeniOk = String(s.rapor_aciklama || "").startsWith("Ok");
-    if (eskiOk && !yeniOk) t.rapor_aciklama = s.rapor_aciklama;
-    if (t.hesap_id == null && s.hesap_id != null) t.hesap_id = s.hesap_id;
-    if (!t.satis_turu || t.satis_turu === "Prim Hesaplama Dışı") {
-      if (s.satis_turu && s.satis_turu !== "Prim Hesaplama Dışı") t.satis_turu = s.satis_turu;
-    }
-  }
+  const sirali = satirlar.map((s) => ({ ...s }));
 
-  // Uzman × mağaza × ürün bazında toplam adet (ziyaretler arası)
+  // Uzman × mağaza × ürün bazında toplam adet (ziyaretler / mükerrer satırlar arası)
   const uzmanUrunToplam = new Map();
   for (const t of sirali) {
     const urunAnahtar =
@@ -1417,13 +1459,14 @@ function parseKolonFiltre(raw) {
 }
 
 async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
-  // ? sırası: sg, so_u, so_b alt sorguları, sonra b.donem_id
-  const params = [donemId, donemId, donemId, donemId];
+  // ? sırası: sg, so_u, so_b, so_r alt sorguları, sonra b.donem_id
+  const params = [donemId, donemId, donemId, donemId, donemId];
   let where = "b.donem_id=?";
   const { normalizeName } = require("./util");
   const filtre = kolonFiltre && typeof kolonFiltre === "object" ? kolonFiltre : {};
 
   // urun: önce beyan.urun_id, yoksa barkod/referans kimliği (inceleme ürünleri dahil)
+  // Sell-out SQL: urun_id → barkod → referans; uniq eşlemesi satır sonrası JS'te (çok barkodlu ürün)
   const fromJoin = `
     FROM satis_beyan b
     LEFT JOIN prim_hesap_satir h ON h.beyan_id=b.id
@@ -1436,7 +1479,12 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
     LEFT JOIN urun ur ON ur.id=COALESCE(b.urun_id, kbar.urun_id, kref.urun_id)
     LEFT JOIN uzman_atama a
       ON a.donem_id=b.donem_id AND a.uzman_id=b.uzman_id AND a.magaza_id=b.magaza_id
-    LEFT JOIN prim_bolum pb ON pb.id=a.bolum_id
+     AND a.bolum_id = COALESCE(
+       h.bolum_id,
+       (SELECT MIN(a2.bolum_id) FROM uzman_atama a2
+         WHERE a2.donem_id=b.donem_id AND a2.uzman_id=b.uzman_id AND a2.magaza_id=b.magaza_id)
+     )
+    LEFT JOIN prim_bolum pb ON pb.id=COALESCE(h.bolum_id, a.bolum_id)
     LEFT JOIN (
       SELECT marka, MAX(marka_grup) AS marka_grup
         FROM sellout
@@ -1455,6 +1503,13 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
        WHERE donem_id=? AND arcon_barkod IS NOT NULL AND arcon_barkod<>''
        GROUP BY magaza_id, arcon_barkod
     ) so_b ON so_b.magaza_id=b.magaza_id AND so_b.arcon_barkod=b.barkod
+    LEFT JOIN (
+      SELECT magaza_id, UPPER(TRIM(arcon_referans)) AS ref_n,
+             SUM(adet) AS adet, SUM(ciro_kdv_haric) AS ciro
+        FROM sellout
+       WHERE donem_id=? AND arcon_referans IS NOT NULL AND arcon_referans<>''
+       GROUP BY magaza_id, UPPER(TRIM(arcon_referans))
+    ) so_r ON so_r.magaza_id=b.magaza_id AND so_r.ref_n=UPPER(TRIM(COALESCE(b.kod, '')))
   `;
 
   if (q) {
@@ -1534,7 +1589,7 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
       b.soyad AS beyan_soyad,
       COALESCE(u.ad_soyad, b.uzman_ham) AS ad_soyad,
       a.grup_adi AS prim_grup,
-      a.pay_orani AS nokta_uzman_sayisi,
+      NULL AS nokta_uzman_sayisi,
       pb.bolum_adi,
       pb.alt_kanal,
       pb.markalar AS bolum_markalar,
@@ -1563,12 +1618,94 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
       h.id AS hesap_id,
       b.eslesme_durum,
       m.bayi,
-      COALESCE(so_u.adet, so_b.adet, 0) AS sellout_adet,
-      COALESCE(so_u.ciro, so_b.ciro, 0) AS sellout_ciro
+      COALESCE(so_u.adet, so_b.adet, so_r.adet, 0) AS sellout_adet,
+      COALESCE(so_u.ciro, so_b.ciro, so_r.ciro, 0) AS sellout_ciro
     ${whereSql}
     ORDER BY b.id
   `;
   return { hamSayim, selectSql, params };
+}
+
+/**
+ * SQL'de barkod/referans tutmazsa uniq_kod master üzerinden sell-out doldur.
+ * (1 ürün = birden fazla barkod/referans; Excel uniq köprüsü)
+ */
+async function enrichSelloutByUniq(donemId, rows) {
+  if (!rows?.length) return rows;
+  const need = rows.filter((r) => !Number(r.sellout_adet || 0));
+  if (!need.length) return rows;
+
+  const normKod = (v) => String(v || "").trim().toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
+  const normBar = (v) => String(v || "").trim().replace(/\D/g, "");
+
+  const [uniqRows] = await pool.query(
+    `SELECT referans, barkod, stok_kodu, stok_barkod_1, uniq_kod, stok_list_uniq_kod FROM uniq_kod`
+  );
+  const codeToUniq = new Map();
+  const mapCode = (code, canon, asBar) => {
+    const u = normKod(canon);
+    if (!u) return;
+    if (asBar) {
+      const b = normBar(code);
+      if (b) codeToUniq.set(`b:${b}`, u);
+    } else {
+      const c = normKod(code);
+      if (c) codeToUniq.set(`c:${c}`, u);
+    }
+  };
+  for (const row of uniqRows) {
+    const canon = normKod(row.stok_list_uniq_kod) || normKod(row.uniq_kod) || normKod(row.referans);
+    if (!canon) continue;
+    mapCode(row.referans, canon, false);
+    mapCode(row.stok_kodu, canon, false);
+    mapCode(row.uniq_kod, canon, false);
+    mapCode(row.stok_list_uniq_kod, canon, false);
+    mapCode(row.barkod, canon, true);
+    mapCode(row.stok_barkod_1, canon, true);
+  }
+  // Excel: TOO EDPI NEW → Uniq DGIP1TO1L04
+  mapCode("DGI89664500999", "DGIP1TO1L04", false);
+  mapCode("8057971185702", "DGIP1TO1L04", true);
+  const canonOf = (ref, bar, urunUniq) => {
+    if (ref) {
+      const hit = codeToUniq.get(`c:${normKod(ref)}`);
+      if (hit) return hit;
+    }
+    if (bar) {
+      const hit = codeToUniq.get(`b:${normBar(bar)}`);
+      if (hit) return hit;
+    }
+    if (urunUniq) return normKod(urunUniq) || null;
+    return ref ? normKod(ref) : null;
+  };
+
+  const [soAll] = await pool.query(
+    `SELECT so.magaza_id, so.arcon_referans, so.arcon_barkod, so.adet, so.ciro_kdv_haric, u.uniq_kod AS urun_uniq
+     FROM sellout so
+     LEFT JOIN urun u ON u.id=so.urun_id
+     WHERE so.donem_id=? AND so.magaza_id IS NOT NULL`,
+    [donemId]
+  );
+  const soUniq = new Map(); // magaza|canon → {adet,ciro}
+  for (const r of soAll) {
+    const canon = canonOf(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
+    if (!canon) continue;
+    const key = `${r.magaza_id}|${canon}`;
+    const cur = soUniq.get(key) || { adet: 0, ciro: 0 };
+    cur.adet += Number(r.adet) || 0;
+    cur.ciro += Number(r.ciro_kdv_haric) || 0;
+    soUniq.set(key, cur);
+  }
+
+  for (const r of need) {
+    const canon = canonOf(r.kod, r.barkod, r.uniq_kod);
+    if (!canon || !r.magaza_id) continue;
+    const hit = soUniq.get(`${r.magaza_id}|${canon}`);
+    if (!hit || hit.adet <= 0) continue;
+    r.sellout_adet = hit.adet;
+    r.sellout_ciro = hit.ciro;
+  }
+  return rows;
 }
 
 function primSatirMap(r) {
@@ -1661,6 +1798,9 @@ app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
   const [rows] = await pool.query(selectSql, params);
+  await enrichSelloutByUniq(donemId, rows);
+  const noktaMap = await loadNoktaUzmanSayisiMap(donemId);
+  applyNoktaUzmanSayisi(rows, noktaMap);
   const birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
   const sayim = birlesik.length;
   const offset = (sayfa - 1) * limit;
@@ -1737,6 +1877,9 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
   const [rows] = await pool.query(selectSql, params);
+  await enrichSelloutByUniq(donemId, rows);
+  const noktaMap = await loadNoktaUzmanSayisiMap(donemId);
+  applyNoktaUzmanSayisi(rows, noktaMap);
   const satirlar = primSatirlariBirlesir(rows.map(primSatirMap));
 
   const renkArgb = {

@@ -273,11 +273,18 @@ export default function ExcelFiltreTablo({
 
   function filtreUygula() {
     if (!acikFiltre || !taslak) return;
-    const secilen = [...taslak];
+    // Arama varken sadece görünen seçimler uygulanır (gizli "hepsi seçili" kalmasın)
+    const ara = filtreAra.trim().toLocaleLowerCase("tr-TR");
+    const araVar = !!ara;
+    const gorunen = araVar
+      ? tumDegerler.filter((v) => v.toLocaleLowerCase("tr-TR").includes(ara))
+      : tumDegerler;
+    let secilen = [...taslak];
+    if (araVar) secilen = secilen.filter((v) => gorunen.includes(v));
     const sonraki = { ...filtreler };
     if (secilen.length === 0) {
       sonraki[acikFiltre] = []; // hiçbir şey → 0 satır
-    } else if (secilen.length === tumDegerler.length) {
+    } else if (!araVar && secilen.length === tumDegerler.length) {
       delete sonraki[acikFiltre];
     } else {
       sonraki[acikFiltre] = secilen;

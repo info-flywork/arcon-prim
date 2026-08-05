@@ -3,6 +3,8 @@
 // Akış (dönem bazında):
 //  1. Beyan satırları (Zeops) sell-out ile eşleştirilir:
 //     birim ciro = sellout ciro / sellout adet  (mağaza × uniq ürün)
+//     eşleşme: referans → barkod → urun_id → uniq
+//     (1 ürünün birden fazla barkodu/referansı olabilir; uniq köprüdür)
 //     prim adedi sell-out adediyle sınırlanır (fazla beyan prim almaz)
 //  2. Uzmanın senaryosu (prim_bolum) atamadan gelir; satis_basi oranı
 //     prime esas tutara uygulanır.
@@ -25,6 +27,20 @@ const pool = require("../db");
 const { normalizeName } = require("../util");
 const { loadProductResolver, resolveProduct } = require("./productService");
 
+/**
+ * Sell-out mükerrer modu:
+ *  - "ortak"       : mağaza×ürün ortak havuz (eski; uzmanlar birbirinin hakkını düşürür)
+ *  - "uzman_tavan" : Excel mantığı — her uzman kendi tavanında min(beyan, sell-out);
+ *                   uzmanlar ortak havuzu paylaşmaz
+ * Geri almak: SELLOUT_MUKERRER_MOD=ortak veya hesapla(..., { mukerrerMod: "ortak" })
+ */
+function resolveMukerrerMod(options = {}) {
+  const raw = String(options.mukerrerMod || process.env.SELLOUT_MUKERRER_MOD || "uzman_tavan")
+    .trim()
+    .toLocaleLowerCase("tr-TR");
+  return raw === "ortak" ? "ortak" : "uzman_tavan";
+}
+
 // Marka grubu üyelikleri; sell-out dosyasındaki "Marka Grup" kolonundan
 // dinamik öğrenilir, bulunamazsa buradaki varsayılanlar kullanılır.
 const VARSAYILAN_GRUPLAR = {
@@ -32,11 +48,64 @@ const VARSAYILAN_GRUPLAR = {
   HERMES: ["HERMES"],
   DG: ["DOLCE & GABBANA", "DOLCE&GABBANA", "D&G"],
   GIV: ["GIVENCHY"],
+  GIVENCHY: ["GIVENCHY"],
   DIOR: ["DIOR"],
   SISLEY: ["SISLEY"],
   LP: ["LA PRAIRIE", "LP"],
   "SENSAİ": ["SENSAI", "SENSAİ"],
 };
+
+/** Excel Group metninden marka anahtarları çıkar (Givenchy+Hermes+Dolce → GIV,HERMES,DG) */
+function grupAdindanMarkaAnahtarlari(grupAdi) {
+  const g = normalizeName(grupAdi || "");
+  if (!g) return [];
+  const out = new Set();
+  const tokens = g.split(/[+\/&,]/).map((t) => t.trim()).filter(Boolean);
+  for (const t of tokens.length ? tokens : [g]) {
+    if (t.includes("DOLCE") || t.includes("GABBANA") || t === "D&G" || t === "DG") out.add("DG");
+    if (t.includes("RABANNE") || t.includes("PUIG") || t.includes("GAULTIER")
+      || t.includes("HERRERA") || t.includes("NINA") || t.includes("RICCI") || t.includes("CAROLINA")) {
+      out.add("PUIG");
+    }
+    if (t.includes("HERMES")) out.add("HERMES");
+    if (t.includes("GIVENCHY") || t === "GIV") out.add("GIV");
+    if (t.includes("DIOR")) out.add("DIOR");
+    if (t.includes("SISLEY")) out.add("SISLEY");
+    if (t.includes("PRAIRIE") || t === "LP") out.add("LP");
+    if (t.includes("SENSAI")) out.add("SENSAI");
+  }
+  // Tam metin fallback (token yoksa)
+  if (!out.size) {
+    if (g.includes("GIVENCHY") || g.includes("GIV")) out.add("GIV");
+    if (g.includes("HERMES")) out.add("HERMES");
+    if (g.includes("DOLCE") || g.includes("GABBANA") || g.includes("DG")) out.add("DG");
+    if (g.includes("PUIG")) out.add("PUIG");
+  }
+  return [...out];
+}
+
+/**
+ * Bölüm markalar listesini Excel Group ile birleştir.
+ * Örn. bolum=HERMES+DG ama grup_adi=Givenchy+Hermes+Dolce → GIV de eklenir.
+ * Böylece Givenchy satışı / hedefi de bu atamaya dahil olur.
+ */
+function genisletMarkalar(markalarJson, grupAdi) {
+  let keys = [];
+  try {
+    keys = Array.isArray(markalarJson) ? [...markalarJson] : JSON.parse(markalarJson || "[]");
+  } catch {
+    keys = [];
+  }
+  const ekstra = grupAdindanMarkaAnahtarlari(grupAdi);
+  const seen = new Set(keys.map((k) => normalizeName(k)));
+  for (const e of ekstra) {
+    if (!seen.has(normalizeName(e))) {
+      keys.push(e);
+      seen.add(normalizeName(e));
+    }
+  }
+  return keys;
+}
 
 function markaGrubunda(markalarJson, marka, markaGrupMap) {
   if (!markalarJson) return true; // grup tanımsızsa tüm markalar dahil
@@ -63,6 +132,7 @@ function grupMarkalari(markalarJson, tumMarkalar, markaGrupMap) {
 async function hesapla(donemId, options = {}) {
   const conn = options.connection || await pool.getConnection();
   const ownsConnection = !options.connection;
+  const mukerrerMod = resolveMukerrerMod(options);
   try {
     if (ownsConnection) await conn.beginTransaction();
     await conn.query("DELETE FROM prim_hesap_satir WHERE donem_id=?", [donemId]);
@@ -84,6 +154,10 @@ async function hesapla(donemId, options = {}) {
        JOIN prim_bolum b ON b.id=a.bolum_id
        WHERE a.donem_id=?`, [donemId]
     );
+    // Excel Group > bölüm marka listesi: Givenchy+Hermes+Dolce → GIV de dahil
+    for (const a of atamalar) {
+      a.markalar = genisletMarkalar(a.markalar, a.grup_adi);
+    }
     const [kurallar] = await conn.query(
       `SELECT k.*, b.marka_grubu_key, b.bolum_adi AS b_adi FROM prim_kural k
        JOIN prim_bolum b ON b.id=k.bolum_id`
@@ -106,29 +180,95 @@ async function hesapla(donemId, options = {}) {
       kurallarByBolum.get(k.bolum_id).push(k);
     }
 
-    // Sell-out kayıtları — MÜKERRER KORUMA için kalan tracking geri geldi.
-    // Bir uzman × mağaza × ürün için sell-out'ta gerçekten kaç adet satılmışsa
-    // beyanlar o kadar prime esasa girer, fazlası mükerrer sayılır.
-    //
-    // Sena'nın istediği: hem arcon_referans hem barkod ile eşleşme (uzmanın hakkı
-    // yenmesin), ama sell-out toplamı geçilmesin (mükerrer prim ödenmesin).
-    //
-    // Her sell-out satırı (magaza × arcon_referans × arcon_barkod bazında toplanmış)
-    // TEK bir kalan objesi üretir. Bu obje hem soRefMap hem soBarMap hem soMap'te
-    // aynı pointer olarak duruyor — beyan hangi anahtarla eşleşirse eşleşsin,
-    // aynı kaynağın kalanından düşülür.
-    const soMap = new Map();      // magaza × urun_id → sellout kaydı (kalan objesine pointer)
-    const soRefMap = new Map();    // magaza × arcon_referans → aynı obje
-    const soBarMap = new Map();    // magaza × arcon_barkod → aynı obje
+    // Sell-out kayıtları — mükerrer koruma (kalan tracking).
+    // ortak: tüm uzmanlar aynı kalanı paylaşır
+    // uzman_tavan: her uzman mağaza sell-out adedini kendi tavanı olarak görür (Excel)
+    // Eşleşme: uniq(ref) → uniq havuz → referans → barkod → urun_id
+    // (1 ürünün birden fazla barkodu olabilir; Excel Uniq köprüsü öncelikli)
+    const soMap = new Map();      // magaza × urun_id
+    const soRefMap = new Map();    // magaza × arcon_referans (satır bazlı birim — birleşmez)
+    const soBarMap = new Map();    // magaza × arcon_barkod
+    const soUniqMap = new Map();   // magaza × kanonik uniq (çoklu barkod fallback havuzu)
+    const soUzmanKalan = new Map();
     const normKod = (v) => String(v || "").trim().toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
     const normBar = (v) => String(v || "").trim().replace(/\D/g, "");
 
-    // Tek bir SQL sorgusuyla sellout satırlarını çek — hem urun_id hem arcon_referans
-    // hem arcon_barkod aynı objeyi paylaşsın diye.
+    const [uniqRows] = await conn.query(
+      `SELECT referans, barkod, stok_kodu, stok_barkod_1, uniq_kod, stok_list_uniq_kod
+       FROM uniq_kod`
+    );
+    const codeToUniq = new Map();
+    function mapCodeToUniq(code, canon, asBarkod) {
+      const u = normKod(canon);
+      if (!u) return;
+      if (asBarkod) {
+        const b = normBar(code);
+        if (b) codeToUniq.set(`b:${b}`, u);
+      } else {
+        const c = normKod(code);
+        if (c) codeToUniq.set(`c:${c}`, u);
+      }
+    }
+    for (const row of uniqRows) {
+      // Excel: uniq boşsa Uniq kolonu çoğu zaman referansın kendisi
+      const canon = normKod(row.stok_list_uniq_kod) || normKod(row.uniq_kod) || normKod(row.referans);
+      if (!canon) continue;
+      mapCodeToUniq(row.referans, canon, false);
+      mapCodeToUniq(row.stok_kodu, canon, false);
+      mapCodeToUniq(row.uniq_kod, canon, false);
+      mapCodeToUniq(row.stok_list_uniq_kod, canon, false);
+      mapCodeToUniq(row.barkod, canon, true);
+      mapCodeToUniq(row.stok_barkod_1, canon, true);
+    }
+    // Excel Prim Çalışma: TOO EDPI NEW (DGI89664500999) → Uniq DGIP1TO1L04
+    // (bizde yanlışlıkla DGB000000244'e bağlıydı; Excel ile hizala)
+    mapCodeToUniq("DGI89664500999", "DGIP1TO1L04", false);
+    mapCodeToUniq("8057971185702", "DGIP1TO1L04", true);
+
+    function canonUniq(ref, bar, urunUniq) {
+      if (ref) {
+        const hit = codeToUniq.get(`c:${normKod(ref)}`);
+        if (hit) return hit;
+      }
+      if (bar) {
+        const hit = codeToUniq.get(`b:${normBar(bar)}`);
+        if (hit) return hit;
+      }
+      if (urunUniq) return normKod(urunUniq) || null;
+      return ref ? normKod(ref) : null;
+    }
+
+    function addSoKayit(map, key, adet, ciro, marka) {
+      const mevcut = map.get(key);
+      if (mevcut) {
+        mevcut.adet += adet;
+        mevcut.ciro += ciro;
+        mevcut.kalan += adet;
+      } else {
+        map.set(key, { adet, ciro, marka, kalan: adet });
+      }
+    }
+
+    function soUzmanIcin(uzmanId, so, kaynakKey) {
+      if (mukerrerMod !== "uzman_tavan" || !so || !uzmanId) return so;
+      const key = `${uzmanId}|${kaynakKey}`;
+      let kopya = soUzmanKalan.get(key);
+      if (!kopya) {
+        kopya = {
+          adet: so.adet,
+          ciro: so.ciro,
+          marka: so.marka,
+          kalan: so.adet,
+        };
+        soUzmanKalan.set(key, kopya);
+      }
+      return kopya;
+    }
+
     const [soAll] = await conn.query(
       `SELECT so.magaza_id, so.urun_id, so.arcon_referans, so.arcon_barkod,
               SUM(so.adet) adet, SUM(so.ciro_kdv_haric) ciro,
-              MAX(u.marka) urun_marka, MAX(so.marka) marka
+              MAX(u.marka) urun_marka, MAX(u.uniq_kod) urun_uniq, MAX(so.marka) marka
        FROM sellout so
        LEFT JOIN urun u ON u.id=so.urun_id AND u.durum='aktif'
        WHERE so.donem_id=? AND so.magaza_id IS NOT NULL
@@ -139,40 +279,21 @@ async function hesapla(donemId, options = {}) {
       const adet = Number(r.adet) || 0;
       const ciro = Number(r.ciro) || 0;
       if (adet <= 0) continue;
-      // Bu sellout kaydını temsil eden TEK obje — kalan burada tutulur
-      const kayit = {
-        adet, ciro,
-        marka: r.urun_marka || r.marka,
-        kalan: adet, // mükerrer koruma için sell-out kalanı
-      };
-      // Aynı obje pointer'ını her map'e koy — birinden düşülünce hepsinden düşer
-      if (r.urun_id) {
-        const key = `${r.magaza_id}|${r.urun_id}`;
-        const mevcut = soMap.get(key);
-        if (mevcut) {
-          // Aynı urun_id için birden fazla ref/barkod varsa birleştir
-          mevcut.adet += adet; mevcut.ciro += ciro; mevcut.kalan += adet;
-        } else {
-          soMap.set(key, kayit);
-        }
-      }
+      const marka = r.urun_marka || r.marka;
+      // Ref/barkod ayrı tutulur → Excel Uniq=referans eşlemesinde doğru birim ciro
       if (r.arcon_referans) {
-        const key = `${r.magaza_id}|${normKod(r.arcon_referans)}`;
-        const mevcut = soRefMap.get(key);
-        if (mevcut && mevcut !== kayit) {
-          mevcut.adet += adet; mevcut.ciro += ciro; mevcut.kalan += adet;
-        } else {
-          soRefMap.set(key, kayit);
-        }
+        addSoKayit(soRefMap, `${r.magaza_id}|${normKod(r.arcon_referans)}`, adet, ciro, marka);
       }
       if (r.arcon_barkod) {
-        const key = `${r.magaza_id}|${normBar(r.arcon_barkod)}`;
-        const mevcut = soBarMap.get(key);
-        if (mevcut && mevcut !== kayit) {
-          mevcut.adet += adet; mevcut.ciro += ciro; mevcut.kalan += adet;
-        } else {
-          soBarMap.set(key, kayit);
-        }
+        addSoKayit(soBarMap, `${r.magaza_id}|${normBar(r.arcon_barkod)}`, adet, ciro, marka);
+      }
+      if (r.urun_id) {
+        addSoKayit(soMap, `${r.magaza_id}|${r.urun_id}`, adet, ciro, marka);
+      }
+      // Uniq havuzu: yalnızca sell-out satırının kendi kanonu (beyan alias'ı burada yok)
+      const canon = canonUniq(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
+      if (canon) {
+        addSoKayit(soUniqMap, `${r.magaza_id}|${canon}`, adet, ciro, marka);
       }
     }
 
@@ -251,7 +372,7 @@ async function hesapla(donemId, options = {}) {
     //   bolumSec ve fallback'e göre kendi kararını verecek. Böylece Excel'deki
     //   "beyanda ne varsa görelim" mantığına yakın davranıyoruz.
     const [beyanlar] = await conn.query(
-      `SELECT b.*, u.marka AS urun_marka FROM satis_beyan b
+      `SELECT b.*, u.marka AS urun_marka, u.uniq_kod AS urun_uniq FROM satis_beyan b
        LEFT JOIN urun u ON u.id=b.urun_id
        WHERE b.donem_id=? AND b.magaza_id IS NOT NULL
          AND (b.durum IS NULL OR b.durum LIKE 'Tamamland%')
@@ -286,35 +407,34 @@ async function hesapla(donemId, options = {}) {
       if (!uzmanBolumler.has(a.uzman_id)) uzmanBolumler.set(a.uzman_id, []);
       uzmanBolumler.get(a.uzman_id).push(a);
     }
-    // Aynı uzman-mağaza-atama kısayolu (varsa öncelikli)
-    const atamaMap = new Map(atamalar.map((a) => [`${a.uzman_id}|${a.magaza_id}`, a]));
+    // Aynı uzman-mağaza için birden fazla grup olabilir (Puig + Hermes-DG)
+    const atamaByUzmanMagaza = new Map(); // "uzman|magaza" -> [atama...]
+    for (const a of atamalar) {
+      const k = `${a.uzman_id}|${a.magaza_id}`;
+      if (!atamaByUzmanMagaza.has(k)) atamaByUzmanMagaza.set(k, []);
+      atamaByUzmanMagaza.get(k).push(a);
+    }
 
     // Uzman × Zeops mağazası için uygulanacak senaryo:
-    //  1. Direct atama varsa VE ürün markası atamanın grubunda ise → onu kullan
-    //  2. Direct atama var ama ürün grubu farklı → uzmanın diğer atamalarını dene
-    //     (Ör: Ahmet Bozdağ SEPHORA VADİ İSTANBUL/Puig atamalı; orada HERMES satarsa
-    //      Puig grubunda olmadığı için direct atamadan prim ALMAMALI)
-    //  3. Uzmanın hiçbir atamasında bu markanın grubu yoksa → prim dışı (null)
-    //
-    // Excel'in kuralı: "Uzman kendi marka grubu dışı ürün satarsa o satır primsiz"
-    // Sistem şimdi bunu direct atamada bile uyguluyor.
+    //  1. Bu mağazadaki atamalardan ürün markasının grubuna uyanı seç
+    //  2. Yoksa uzmanın diğer mağaza atamalarında uygun grup ara
+    //  3. Hiçbiri uymazsa → prim dışı (null)
     function bolumSec(uzmanId, magazaId, urunMarka) {
-      const dogrudan = atamaMap.get(`${uzmanId}|${magazaId}`);
-      if (dogrudan && markaGrubunda(dogrudan.markalar, urunMarka, markaGrupMap)) {
-        return dogrudan;
+      const dogrudanlar = atamaByUzmanMagaza.get(`${uzmanId}|${magazaId}`) || [];
+      for (const d of dogrudanlar) {
+        if (markaGrubunda(d.markalar, urunMarka, markaGrupMap)) return d;
       }
-      // Direct atama yok veya ürün grubu farklı → diğer atamalarda uygun grup ara
       const atamalarList = uzmanBolumler.get(uzmanId) || [];
-      if (!atamalarList.length) return null;
       for (const a of atamalarList) {
         if (markaGrubunda(a.markalar, urunMarka, markaGrupMap)) return a;
       }
-      return null; // uzmanın hiçbir grubuna uymayan ürün → prim dışı
+      return null;
     }
 
     // ---- 1) Satır bazlı prime esas tutar (sell-out tahsisi) ----
     const hesapSatirlari = [];
-    const ozetMap = new Map(); // "uzman|magaza" -> özet akümülatörü
+    // uzman × mağaza × bölüm — aynı noktada iki grup ayrı özet satırı üretir
+    const ozetMap = new Map(); // "uzman|magaza|bolum" -> özet akümülatörü
     for (const b of beyanlar) {
       const urunMarka = markaCoz(b);
       b.urun_marka = urunMarka;
@@ -331,33 +451,57 @@ async function hesapla(donemId, options = {}) {
         continue;
       }
 
-      // Sell-out kaynağını bul — hem arcon_referans hem barkod hem urun_id
-      // ile eşleşme dener (uzmanın hakkı yenmesin). Bulunca o kaydın
-      // KALAN'ından düşer: beyan > kalan olursa fazlası mükerrer sayılır,
-      // prim verilmez (Sena'nın istediği mükerrer koruma).
-      //
-      // Öncelik: arcon_referans → arcon_barkod → urun_id
-      // Her map aynı sell-out objesine pointer olduğu için hangisinden
-      // düşülürse hepsinden düşer (aynı kaynak).
+      // Sell-out: Excel Uniq → uniq havuz → referans → barkod → urun_id
       let so = null;
       let eslesmeYol = null;
-      if (b.kod) {
+      let soKaynakKey = null;
+      const canon = canonUniq(b.kod, b.barkod, b.urun_uniq);
+      if (canon) {
+        const uniqRef = soRefMap.get(`${b.magaza_id}|${canon}`);
+        if (uniqRef) {
+          so = uniqRef;
+          eslesmeYol = "uniq_ref";
+          soKaynakKey = `uniq:${b.magaza_id}|${canon}`;
+        }
+      }
+      if (!so && canon) {
+        const uniqAlt = soUniqMap.get(`${b.magaza_id}|${canon}`);
+        if (uniqAlt) {
+          so = uniqAlt;
+          eslesmeYol = "uniq_kod";
+          soKaynakKey = `uniq:${b.magaza_id}|${canon}`;
+        }
+      }
+      if (!so && b.kod) {
         const refAlt = soRefMap.get(`${b.magaza_id}|${normKod(b.kod)}`);
-        if (refAlt) { so = refAlt; eslesmeYol = "arcon_referans"; }
+        if (refAlt) {
+          so = refAlt;
+          eslesmeYol = "arcon_referans";
+          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `ref:${b.magaza_id}|${normKod(b.kod)}`;
+        }
       }
       if (!so && b.barkod) {
         const barAlt = soBarMap.get(`${b.magaza_id}|${normBar(b.barkod)}`);
-        if (barAlt) { so = barAlt; eslesmeYol = "arcon_barkod"; }
+        if (barAlt) {
+          so = barAlt;
+          eslesmeYol = "arcon_barkod";
+          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `bar:${b.magaza_id}|${normBar(b.barkod)}`;
+        }
       }
       if (!so && b.urun_id) {
         const idAlt = soMap.get(`${b.magaza_id}|${b.urun_id}`);
-        if (idAlt) { so = idAlt; eslesmeYol = "urun_id"; }
+        if (idAlt) {
+          so = idAlt;
+          eslesmeYol = "urun_id";
+          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `urun:${b.magaza_id}|${b.urun_id}`;
+        }
       }
+      if (!soKaynakKey) soKaynakKey = `x:${b.id}`;
+      so = soUzmanIcin(b.uzman_id, so, soKaynakKey);
 
       let primAdet = 0, birim = 0, aciklama = null;
       if (so && so.adet > 0) {
         birim = so.ciro / so.adet;
-        // Mükerrer koruma: beyan adedi × sell-out kalanı arasında min al
         const kullanilabilir = Math.max(0, so.kalan);
         primAdet = Math.min(b.adet, kullanilabilir);
         so.kalan -= primAdet;
@@ -378,7 +522,7 @@ async function hesapla(donemId, options = {}) {
         donemId, b.id, b.uzman_id, b.magaza_id, atama.bolum_id, b.uniq_kod_id,
         b.urun_id, b.adet, primAdet, +birim.toFixed(2), primeEsas, aciklama,
       ]);
-      const key = `${b.uzman_id}|${b.magaza_id}`;
+      const key = `${b.uzman_id}|${b.magaza_id}|${atama.bolum_id}`;
       if (!ozetMap.has(key)) {
         // Uzmanın ata mağazası olmasa bile bu Zeops mağazasında hesap yapılır;
         // atama nesnesindeki bolum_id (senaryo oranları) korunur.
@@ -572,7 +716,12 @@ async function hesapla(donemId, options = {}) {
       "SELECT COUNT(*) uzman_sayisi, SUM(toplam_prim) toplam FROM prim_ozet WHERE donem_id=?",
       [donemId]
     );
-    return { uzmanMagazaSayisi: sonuc.uzman_sayisi, toplamPrim: sonuc.toplam, satirSayisi: hesapSatirlari.length };
+    return {
+      uzmanMagazaSayisi: sonuc.uzman_sayisi,
+      toplamPrim: sonuc.toplam,
+      satirSayisi: hesapSatirlari.length,
+      mukerrerMod,
+    };
   } catch (e) {
     if (ownsConnection) await conn.rollback();
     throw e;
@@ -581,4 +730,4 @@ async function hesapla(donemId, options = {}) {
   }
 }
 
-module.exports = { hesapla, markaGrubunda, grupMarkalari };
+module.exports = { hesapla, markaGrubunda, grupMarkalari, genisletMarkalar, grupAdindanMarkaAnahtarlari };

@@ -8,7 +8,7 @@
 //   5. Uzman-Mağaza-Grup     -> magaza, uzman, uzman_atama
 const XLSX = require("xlsx");
 const pool = require("../db");
-const { normalizeName, normalizeStore, parseTrNumber, parseDate } = require("../util");
+const { normalizeName, normalizeStore, parseTrNumber, parseDate, resolveUzmanId } = require("../util");
 const {
   cleanRaw,
   normalizeCanonicalCode,
@@ -176,8 +176,8 @@ async function loadLegacyRepresentatives(conn) {
  *  (Beymen mağazasındaki DG %1.5, Sevil noktasındaki DG %1.0 gibi) doğru seçim
  */
 function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
-  // Önce kanal filtresi
-  let candidates = bolumler.filter((b) => !kanal || b.kanal === kanal);
+  // Kanal filtresi: bölüm.kanal NULL = tüm kanallara açık (ör. DIOR Sephora+Boyner)
+  let candidates = bolumler.filter((b) => !b.kanal || !kanal || b.kanal === kanal);
   // Sonra alt_kanal filtresi — DB'de alt_kanal tanımlı olan bölümler için
   if (altKanal) {
     const altFilter = candidates.filter((b) => {
@@ -207,18 +207,22 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
       aliases.add("PUIG"); aliases.add("RABANNE");
     }
     if (t.includes("HERMES")) aliases.add("HERMES");
-    if (t.includes("GIVENCHY")) aliases.add("GIVENCHY");
+    if (t.includes("GIVENCHY") || t === "GIV") {
+      aliases.add("GIVENCHY"); aliases.add("GIV");
+    }
     if (t.includes("DIOR")) aliases.add("DIOR");
     if (t.includes("SISLEY")) aliases.add("SISLEY");
     if (t.includes("PRAIRIE") || t === "LP") aliases.add("LP");
     if (t.includes("SENSAI")) aliases.add("SENSAI");
   }
 
+  // Marka grubu net olan bölümler (DIOR, SISLEY…) boş Puig kabuğuna (markalar=null) tercih edilir
   let best = null;
   for (const b of candidates) {
     const adi = normalizeName(b.marka_grubu_adi || b.bolum_adi || "");
     const key = normalizeName(b.marka_grubu_key || "");
     const marks = normalizeName(JSON.stringify(b.markalar || []));
+    const hasMarka = !!(b.marka_grubu_key || (Array.isArray(b.markalar) && b.markalar.length) || b.markalar);
     let sc = 0;
     if (grupNorm && adi && (adi.includes(grupNorm) || grupNorm.includes(adi))) sc += 5;
     if (grupNorm && key && (key.includes(grupNorm) || grupNorm.includes(key))) sc += 4;
@@ -228,9 +232,17 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
       if (a === "DG" && (adi.includes("DG") || key.includes("DG") || marks.includes("DG"))) sc += 4;
     }
     if (uzmanTipi && b.uzman_tipi === uzmanTipi) sc += 1;
+    // Marka tanımsız kabuk bölümler (yalnız bonus vb.) zayıf kalsın
+    if (!hasMarka && sc > 0 && sc < 3) sc = 0;
     if (!best || sc > best.sc) best = { b, sc };
   }
   if (best && best.sc > 0) return best.b;
+
+  // Kanalda bulunamadıysa marka grubu net bölümleri tüm listeden dene (DIOR: SEPHORA kaydı → Boyner)
+  if (kanal) {
+    const cross = eslestirBolum(bolumler, { kanal: null, grup, uzmanTipi: null, altKanal: null });
+    if (cross && (cross.marka_grubu_key || cross.markalar)) return cross;
+  }
 
   return candidates.find((b) => b.uzman_tipi === uzmanTipi && b.marka_grubu_key)
     || candidates.find((b) => b.marka_grubu_key)
@@ -254,6 +266,8 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
   const errors = [];
   try {
     await conn.beginTransaction();
+    // Dosya master: dönem atamalarını baştan yaz (çoklu grup satırları korunur)
+    await conn.query("DELETE FROM uzman_atama WHERE donem_id=?", [donemId]);
     const [bolumler] = await conn.query(
       "SELECT id, kanal, alt_kanal, uzman_tipi, marka_grubu_key, marka_grubu_adi, markalar FROM prim_bolum WHERE aktif=1"
     );
@@ -325,7 +339,7 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
       await conn.query(
         `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi)
          VALUES (?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE bolum_id=VALUES(bolum_id), grup_adi=VALUES(grup_adi)`,
+         ON DUPLICATE KEY UPDATE grup_adi=VALUES(grup_adi)`,
         [donemId, uz.id, st.id, bolum.id, grup]
       );
       ok++;
@@ -384,7 +398,7 @@ async function importZeops(buffer, donemId, dosyaAdi) {
       const magazaHam = pick(row, "Mağaza", "Magaza");
       const barkod = cleanRaw(pick(row, "Barkod")) || null;
       const kod = pick(row, "Kod");
-      const uzmanId = uzmanMap.get(normalizeName(uzmanHam)) || null;
+      const uzmanId = resolveUzmanId(uzmanMap, uzmanHam);
       const magazaId = storeMap.get(normalizeStore(magazaHam)) || null;
       const productMatch = resolveProduct(productResolver, { barcode: barkod, reference: kod });
       const productId = productMatch.productId || null;
