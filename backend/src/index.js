@@ -1535,6 +1535,8 @@ async function primRaporuVerisi(donemId) {
     donem_id: donemId,
     satirlar: bulusuk,
     genel_toplam: genelToplam,
+    ozet_kayit: rows.length,
+    hesaplandi: rows.length > 0,
   };
 }
 
@@ -2165,6 +2167,10 @@ app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
   const sayim = birlesik.length;
   const offset = (sayfa - 1) * limit;
   const satirlar = birlesik.slice(offset, offset + limit);
+  const [[ozetSay]] = await pool.query(
+    "SELECT COUNT(*) n FROM prim_ozet WHERE donem_id=?",
+    [donemId]
+  );
 
   res.json({
     donem_id: donemId,
@@ -2177,6 +2183,8 @@ app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
     limit,
     toplam: sayim,
     sayfaSayisi: Math.max(1, Math.ceil(sayim / limit)),
+    hesaplandi: Number(ozetSay.n) > 0,
+    ozet_kayit: Number(ozetSay.n),
   });
 }));
 
