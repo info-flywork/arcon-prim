@@ -331,7 +331,9 @@ export default function PrimHesaplama() {
           tip: "notr",
           metin:
             tip === "hesap"
-              ? `${ad} işleniyor… (${asama || "devam"})`
+              ? job.ilerleme.toplam > 1
+                ? `${ad} işleniyor… ${asama || "devam"} ${Number(y).toLocaleString("tr-TR")} / ${Number(t).toLocaleString("tr-TR")}`
+                : `${ad} işleniyor… (${asama || "devam"})`
               : `${ad} işleniyor… ${y.toLocaleString("tr-TR")} / ${t.toLocaleString("tr-TR")}`,
         });
       }

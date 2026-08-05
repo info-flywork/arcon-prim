@@ -920,7 +920,14 @@ app.post("/api/hesapla/:donemId", wrap(async (req, res) => {
               durum: "isleniyor",
               ilerleme: { asama: "esleme", yapilan: 0, toplam: 1 },
             });
-            esleme = await remapPeriod(donemId);
+            esleme = await remapPeriod(donemId, null, {
+              onProgress: (ilerleme) => {
+                const job = importJobs.get(jobId);
+                if (job && job.durum === "isleniyor") {
+                  importJobs.set(jobId, { ...job, ilerleme });
+                }
+              },
+            });
             importJobs.set(jobId, {
               ...(importJobs.get(jobId) || {}),
               durum: "isleniyor",

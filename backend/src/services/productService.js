@@ -226,8 +226,9 @@ async function withDbLockRetry(fn, maxAttempts = 5) {
 }
 
 async function bulkUpdateFacts(conn, table, updates, opts = {}) {
-  const batchSize = Math.max(10, Number(opts.batchSize) || 40);
+  const batchSize = Math.max(10, Number(opts.batchSize) || 100);
   const commitEach = opts.commitEach === true;
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : null;
   for (let offset = 0; offset < updates.length; offset += batchSize) {
     const batch = updates.slice(offset, offset + batchSize);
     if (!batch.length) continue;
@@ -254,38 +255,47 @@ async function bulkUpdateFacts(conn, table, updates, opts = {}) {
       await conn.commit();
       await conn.beginTransaction();
     }
+    onProgress?.({
+      asama: "esleme",
+      yapilan: Math.min(offset + batch.length, updates.length),
+      toplam: updates.length,
+      tablo: table,
+    });
   }
 }
 
-async function remapPeriod(donemId, connection = null) {
+function sameId(a, b) {
+  if (a == null && b == null) return true;
+  return Number(a) === Number(b);
+}
+
+async function remapPeriod(donemId, connection = null, opts = {}) {
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : null;
   const conn = connection || await pool.getConnection();
   const ownsConnection = !connection;
   try {
     // Tek mega-transaction tüm Zeops satırlarını kilitleyip timeout üretiyordu.
-    // Kendi connection'ımızda kısa batch TX kullanıyoruz.
+    // Kendi connection'ımızda kısa batch TX / autocommit kullanıyoruz.
     if (ownsConnection) {
       try {
         await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
-        await conn.query("SET SESSION innodb_lock_wait_timeout = 20");
+        await conn.query("SET SESSION innodb_lock_wait_timeout = 15");
       } catch {
         /* hosting kısıtlı olabilir */
       }
-      await conn.beginTransaction();
-    } else {
-      // çağıran TX içindeyiz
     }
 
     const [[period]] = await conn.query("SELECT durum FROM donem WHERE id=?", [donemId]);
     if (!period) throw new Error("Dönem bulunamadı");
     if (period.durum === "kapandi") throw new ProductConflictError("Kapalı dönem yeniden eşlenemez.");
 
+    onProgress?.({ asama: "esleme", yapilan: 0, toplam: 1, adim: "atama" });
+
+    if (ownsConnection) await conn.beginTransaction();
     // Zeops'ta satışı olan ama master'da o mağazaya atanmamış uzmanlar:
     // Excel gibi mağaza kırılımı için mevcut senaryolarını o mağazaya kopyala
     const atamaEklenen = await tamamlaEksikAtamalar(conn, donemId);
-    if (ownsConnection) {
-      await conn.commit();
-      await conn.beginTransaction();
-    }
+    if (ownsConnection) await conn.commit();
 
     const resolver = await loadProductResolver(conn);
     const [assignmentRows] = await conn.query(
@@ -294,10 +304,16 @@ async function remapPeriod(donemId, connection = null) {
     );
     const assignmentSet = new Set(assignmentRows.map((row) => `${row.uzman_id}|${row.magaza_id}`));
     const [claims] = await conn.query(
-      "SELECT id, barkod, kod, magaza_id, uzman_id FROM satis_beyan WHERE donem_id=?",
+      `SELECT id, barkod, kod, magaza_id, uzman_id,
+              urun_id, urun_kimlik_id, eslesme_yontemi, eslesme_durum
+         FROM satis_beyan WHERE donem_id=?`,
       [donemId]
     );
-    const claimUpdates = claims.map((row) => {
+
+    onProgress?.({ asama: "esleme", yapilan: 0, toplam: claims.length || 1, adim: "beyan", tablo: "satis_beyan" });
+
+    const claimUpdates = [];
+    for (const row of claims) {
       const match = resolveProduct(resolver, { barcode: row.barkod, reference: row.kod });
       const status = match.status === "ok"
         ? (!row.magaza_id
@@ -308,46 +324,89 @@ async function remapPeriod(donemId, connection = null) {
               ? "atama_yok"
               : "ok")
         : match.status;
-      return {
+      const productId = match.productId || null;
+      const identifierId = match.identifierId || null;
+      const method = match.method || null;
+      // Değişmeyen satırları tekrar UPDATE etme (canlıda asıl yavaşlık buydu)
+      if (
+        sameId(productId, row.urun_id)
+        && sameId(identifierId, row.urun_kimlik_id)
+        && String(method || "") === String(row.eslesme_yontemi || "")
+        && String(status || "") === String(row.eslesme_durum || "")
+      ) {
+        continue;
+      }
+      claimUpdates.push({
         id: row.id,
-        productId: match.productId || null,
-        identifierId: match.identifierId || null,
-        method: match.method || null,
+        productId,
+        identifierId,
+        method,
         matchStatus: status,
-      };
-    });
+      });
+    }
+
+    if (ownsConnection && claimUpdates.length) await conn.beginTransaction();
     await bulkUpdateFacts(conn, "satis_beyan", claimUpdates, {
-      batchSize: 40,
-      commitEach: ownsConnection,
+      batchSize: 100,
+      commitEach: ownsConnection && claimUpdates.length > 0,
+      onProgress,
     });
+    if (ownsConnection && claimUpdates.length) {
+      try { await conn.commit(); } catch { /* son batch commit etmiş olabilir */ }
+    }
 
     const [sellouts] = await conn.query(
-      "SELECT id, arcon_barkod, arcon_referans, magaza_id FROM sellout WHERE donem_id=?",
+      `SELECT id, arcon_barkod, arcon_referans, magaza_id,
+              urun_id, urun_kimlik_id, eslesme_yontemi, eslesme_durum
+         FROM sellout WHERE donem_id=?`,
       [donemId]
     );
-    const selloutUpdates = sellouts.map((row) => {
+    onProgress?.({ asama: "esleme", yapilan: 0, toplam: sellouts.length || 1, adim: "sellout", tablo: "sellout" });
+
+    const selloutUpdates = [];
+    for (const row of sellouts) {
       const match = resolveProduct(resolver, { barcode: row.arcon_barkod, reference: row.arcon_referans });
-      return {
+      const matchStatus = match.status === "ok" && !row.magaza_id ? "magaza_yok" : match.status;
+      const productId = match.productId || null;
+      const identifierId = match.identifierId || null;
+      const method = match.method || null;
+      if (
+        sameId(productId, row.urun_id)
+        && sameId(identifierId, row.urun_kimlik_id)
+        && String(method || "") === String(row.eslesme_yontemi || "")
+        && String(matchStatus || "") === String(row.eslesme_durum || "")
+      ) {
+        continue;
+      }
+      selloutUpdates.push({
         id: row.id,
-        productId: match.productId || null,
-        identifierId: match.identifierId || null,
-        method: match.method || null,
-        matchStatus: match.status === "ok" && !row.magaza_id ? "magaza_yok" : match.status,
-      };
-    });
+        productId,
+        identifierId,
+        method,
+        matchStatus,
+      });
+    }
+
+    if (ownsConnection && selloutUpdates.length) await conn.beginTransaction();
     await bulkUpdateFacts(conn, "sellout", selloutUpdates, {
-      batchSize: 40,
-      commitEach: ownsConnection,
+      batchSize: 100,
+      commitEach: ownsConnection && selloutUpdates.length > 0,
+      onProgress,
     });
-    if (ownsConnection) await conn.commit();
+    if (ownsConnection && selloutUpdates.length) {
+      try { await conn.commit(); } catch { /* ignore */ }
+    }
+
     return {
-      claims: claimUpdates.length,
-      sellouts: selloutUpdates.length,
+      claims: claims.length,
+      sellouts: sellouts.length,
+      claimGuncellenen: claimUpdates.length,
+      selloutGuncellenen: selloutUpdates.length,
       claimUnmatched: claimUpdates.filter((row) => row.matchStatus !== "ok").length,
       selloutUnmatched: selloutUpdates.filter((row) => row.matchStatus !== "ok").length,
       atamaEklenen,
-      claimOk: claimUpdates.filter((row) => row.matchStatus === "ok").length,
-      selloutOk: selloutUpdates.filter((row) => row.matchStatus === "ok").length,
+      claimOk: claims.length - claimUpdates.filter((row) => row.matchStatus !== "ok").length,
+      selloutOk: sellouts.length - selloutUpdates.filter((row) => row.matchStatus !== "ok").length,
     };
   } catch (error) {
     if (ownsConnection) {
