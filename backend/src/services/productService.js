@@ -206,19 +206,40 @@ async function createProduct(data, connection = null) {
   }
 }
 
-async function bulkUpdateFacts(conn, table, updates) {
-  for (let offset = 0; offset < updates.length; offset += 400) {
-    const batch = updates.slice(offset, offset + 400);
+async function withDbLockRetry(fn, maxAttempts = 5) {
+  let last;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      const lock =
+        e.code === "ER_LOCK_WAIT_TIMEOUT" ||
+        e.errno === 1205 ||
+        e.code === "ER_LOCK_DEADLOCK" ||
+        e.errno === 1213;
+      if (!lock || attempt === maxAttempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1) + Math.random() * 200));
+    }
+  }
+  throw last;
+}
+
+async function bulkUpdateFacts(conn, table, updates, opts = {}) {
+  const batchSize = Math.max(10, Number(opts.batchSize) || 40);
+  const commitEach = opts.commitEach === true;
+  for (let offset = 0; offset < updates.length; offset += batchSize) {
+    const batch = updates.slice(offset, offset + batchSize);
     if (!batch.length) continue;
-    const cases = (field) => batch.map(() => "WHEN ? THEN ?").join(" ");
+    const cases = () => batch.map(() => "WHEN ? THEN ?").join(" ");
     const ids = batch.map((row) => row.id);
     const values = (field) => batch.flatMap((row) => [row.id, row[field]]);
-    await conn.query(
+    await withDbLockRetry(() => conn.query(
       `UPDATE ${table} SET
-         urun_id=CASE id ${cases("productId")} END,
-         urun_kimlik_id=CASE id ${cases("identifierId")} END,
-         eslesme_yontemi=CASE id ${cases("method")} END,
-         eslesme_durum=CASE id ${cases("matchStatus")} END
+         urun_id=CASE id ${cases()} END,
+         urun_kimlik_id=CASE id ${cases()} END,
+         eslesme_yontemi=CASE id ${cases()} END,
+         eslesme_durum=CASE id ${cases()} END
        WHERE id IN (${ids.map(() => "?").join(",")})`,
       [
         ...values("productId"),
@@ -227,7 +248,12 @@ async function bulkUpdateFacts(conn, table, updates) {
         ...values("matchStatus"),
         ...ids,
       ]
-    );
+    ));
+    // Küçük batch sonrası commit → satır kilitleri uzun süre tutulmasın
+    if (commitEach) {
+      await conn.commit();
+      await conn.beginTransaction();
+    }
   }
 }
 
@@ -235,7 +261,20 @@ async function remapPeriod(donemId, connection = null) {
   const conn = connection || await pool.getConnection();
   const ownsConnection = !connection;
   try {
-    if (ownsConnection) await conn.beginTransaction();
+    // Tek mega-transaction tüm Zeops satırlarını kilitleyip timeout üretiyordu.
+    // Kendi connection'ımızda kısa batch TX kullanıyoruz.
+    if (ownsConnection) {
+      try {
+        await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+        await conn.query("SET SESSION innodb_lock_wait_timeout = 20");
+      } catch {
+        /* hosting kısıtlı olabilir */
+      }
+      await conn.beginTransaction();
+    } else {
+      // çağıran TX içindeyiz
+    }
+
     const [[period]] = await conn.query("SELECT durum FROM donem WHERE id=?", [donemId]);
     if (!period) throw new Error("Dönem bulunamadı");
     if (period.durum === "kapandi") throw new ProductConflictError("Kapalı dönem yeniden eşlenemez.");
@@ -243,6 +282,10 @@ async function remapPeriod(donemId, connection = null) {
     // Zeops'ta satışı olan ama master'da o mağazaya atanmamış uzmanlar:
     // Excel gibi mağaza kırılımı için mevcut senaryolarını o mağazaya kopyala
     const atamaEklenen = await tamamlaEksikAtamalar(conn, donemId);
+    if (ownsConnection) {
+      await conn.commit();
+      await conn.beginTransaction();
+    }
 
     const resolver = await loadProductResolver(conn);
     const [assignmentRows] = await conn.query(
@@ -273,7 +316,10 @@ async function remapPeriod(donemId, connection = null) {
         matchStatus: status,
       };
     });
-    await bulkUpdateFacts(conn, "satis_beyan", claimUpdates);
+    await bulkUpdateFacts(conn, "satis_beyan", claimUpdates, {
+      batchSize: 40,
+      commitEach: ownsConnection,
+    });
 
     const [sellouts] = await conn.query(
       "SELECT id, arcon_barkod, arcon_referans, magaza_id FROM sellout WHERE donem_id=?",
@@ -289,7 +335,10 @@ async function remapPeriod(donemId, connection = null) {
         matchStatus: match.status === "ok" && !row.magaza_id ? "magaza_yok" : match.status,
       };
     });
-    await bulkUpdateFacts(conn, "sellout", selloutUpdates);
+    await bulkUpdateFacts(conn, "sellout", selloutUpdates, {
+      batchSize: 40,
+      commitEach: ownsConnection,
+    });
     if (ownsConnection) await conn.commit();
     return {
       claims: claimUpdates.length,
@@ -301,7 +350,9 @@ async function remapPeriod(donemId, connection = null) {
       selloutOk: selloutUpdates.filter((row) => row.matchStatus === "ok").length,
     };
   } catch (error) {
-    if (ownsConnection) await conn.rollback();
+    if (ownsConnection) {
+      try { await conn.rollback(); } catch { /* ignore */ }
+    }
     throw error;
   } finally {
     if (ownsConnection) conn.release();
