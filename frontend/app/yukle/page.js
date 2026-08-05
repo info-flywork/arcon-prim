@@ -99,6 +99,10 @@ export default function PrimHesaplama() {
   const [sonuclar, setSonuclar] = useState({});
   const [mesaj, setMesaj] = useState(null);
   const [sayfaYukleniyor, setSayfaYukleniyor] = useState(true);
+  const [bekletUyari, setBekletUyari] = useState(false);
+  const [bilgiModal, setBilgiModal] = useState(null); // { baslik, metin }
+  const [yeniYilYukleniyor, setYeniYilYukleniyor] = useState(false);
+  const [seciliYeniYil, setSeciliYeniYil] = useState(null);
 
   async function donemVerisi(donemId) {
     const [logCevap, dashboardCevap] = await Promise.all([
@@ -174,7 +178,60 @@ export default function PrimHesaplama() {
   const tumDosyalarHazir = DOSYALAR.every(dosyaHazir);
   const primVar = Number(acikPanel.dashboard?.prim?.kayit || 0) > 0;
 
+  const yilSecenekleri = useMemo(() => {
+    const simdiYil = new Date().getFullYear();
+    const maxDonemYil = donemler.length
+      ? Math.max(...donemler.map((d) => Number(d.yil)))
+      : simdiYil;
+    const baslangic = Math.max(maxDonemYil + 1, simdiYil + 1);
+    return Array.from({ length: 5 }, (_, i) => baslangic + i);
+  }, [donemler]);
+
+  const aktifYeniYil = seciliYeniYil || yilSecenekleri[0] || new Date().getFullYear() + 1;
+
+  async function yeniYilDonemiAc(hedefYil = aktifYeniYil) {
+    if (yeniYilYukleniyor || yukleniyor || hesaplaniyor) return;
+    const yil = Number(hedefYil);
+    setYeniYilYukleniyor(true);
+    setMesaj(null);
+    try {
+      const cevap = await fetch("/api/donemler/yeni-yil", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yil }),
+      });
+      const veri = await cevap.json().catch(() => ({}));
+      if (!cevap.ok) {
+        setBilgiModal({
+          baslik: "Dönem açılamadı",
+          metin:
+            veri.hata ||
+            `Henüz ${yil} yılına gelinmediği için dönem açılamaz.`,
+        });
+        return;
+      }
+      const liste = await fetch("/api/donemler").then((r) => r.json());
+      if (Array.isArray(liste)) setDonemler(liste);
+      setMesaj({
+        tip: "ok",
+        metin: veri.mesaj || `${yil} dönemleri açıldı.`,
+      });
+    } catch (hata) {
+      setBilgiModal({
+        baslik: "Dönem açılamadı",
+        metin: hata.message || "İstek tamamlanamadı.",
+      });
+    } finally {
+      setYeniYilYukleniyor(false);
+    }
+  }
+
   async function ayAc(donem) {
+    const simdi = new Date();
+    const gelecek =
+      Number(donem.yil) > simdi.getFullYear()
+      || (Number(donem.yil) === simdi.getFullYear() && Number(donem.ay) > simdi.getMonth() + 1);
+    if (gelecek) return;
     if (Number(acikId) === Number(donem.id)) return;
     setMesaj(null);
     setSonuclar({});
@@ -190,6 +247,10 @@ export default function PrimHesaplama() {
 
   async function dosyaGonder(tip, file) {
     if (!file || !acikId) return;
+    if (yukleniyor) {
+      setBekletUyari(true);
+      return;
+    }
     setYukleniyor(tip);
     setMesaj(null);
     const form = new FormData();
@@ -260,54 +321,80 @@ export default function PrimHesaplama() {
 
   return (
     <div className="prim-sayfa">
-      <header className="prim-hero">
-        <div>
-          <span className="prim-kicker">Aylık prim akışı</span>
-          <h2>Prim Hesaplama</h2>
-          <p>Ayı seçin, dosyaları yükleyin ve primi hesaplayın.</p>
-        </div>
-        {acikDonem && (
-          <div className="aktif-donem">
-            <span>Seçili dönem</span>
-            <strong>{acikDonem.ad}</strong>
-            <small>
-              {primVar
-                ? "Hesaplandı"
-                : acikDonem.durum === "acik"
-                  ? "Yüklemeye hazır"
-                  : acikDonem.durum}
-            </small>
-          </div>
-        )}
-      </header>
-
       <section className="ay-secici">
         <div className="ay-secici-baslik">
-          <span>Dönemler</span>
-          <small>Tıklayınca ay açılır</small>
+          <div>
+            <span>Dönemler</span>
+            <small>Bu yılın ayları · gelecek aylar kapalı</small>
+          </div>
+          <div className="yeni-yil-ac">
+            <label htmlFor="yeni-yil-sec">Yeni yıl</label>
+            <select
+              id="yeni-yil-sec"
+              className="yeni-yil-select"
+              value={aktifYeniYil}
+              disabled={yeniYilYukleniyor || !!yukleniyor || hesaplaniyor}
+              onChange={(e) => setSeciliYeniYil(Number(e.target.value))}
+            >
+              {yilSecenekleri.map((yil) => (
+                <option key={yil} value={yil}>
+                  {yil}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn ikincil yeni-yil-btn"
+              disabled={yeniYilYukleniyor || !!yukleniyor || hesaplaniyor}
+              onClick={() => yeniYilDonemiAc(aktifYeniYil)}
+            >
+              {yeniYilYukleniyor ? "Açılıyor…" : "Dönem aç"}
+            </button>
+          </div>
         </div>
         <div className="donem-kutular ay-kutular" role="tablist" aria-label="Dönem seçimi">
           {donemler.map((donem) => {
+            const simdi = new Date();
             const aktif = Number(acikId) === Number(donem.id);
             const buAy =
-              Number(donem.yil) === new Date().getFullYear() &&
-              Number(donem.ay) === new Date().getMonth() + 1;
+              Number(donem.yil) === simdi.getFullYear() &&
+              Number(donem.ay) === simdi.getMonth() + 1;
+            const gelecek =
+              Number(donem.yil) > simdi.getFullYear()
+              || (Number(donem.yil) === simdi.getFullYear() && Number(donem.ay) > simdi.getMonth() + 1);
             const donemPrim =
               Number(panel[donem.id]?.dashboard?.prim?.kayit || 0) > 0 ||
               donem.durum === "hesaplandi";
+            const sinif = [
+              aktif ? "aktif" : "",
+              buAy ? "bu-ay" : "",
+              donemPrim ? "hesaplandi" : "",
+              gelecek ? "gelecek" : "",
+            ].filter(Boolean).join(" ");
             return (
               <button
                 key={donem.id}
                 type="button"
                 role="tab"
                 aria-selected={aktif}
-                className={aktif ? "aktif" : ""}
+                aria-disabled={gelecek}
+                disabled={gelecek}
+                className={sinif}
                 onClick={() => ayAc(donem)}
+                title={gelecek ? "Bu ay henüz gelmedi" : donemPrim ? "Hesaplandı" : undefined}
               >
                 <span>{donem.ad}</span>
                 <small>
-                  <i className={`donem-durum ${donemPrim ? "hesaplandi" : donem.durum}`} />
-                  {buAy ? "Bu ay" : donemPrim ? "Hesaplandı" : donem.durum === "kapandi" ? "Kapalı" : "Açık"}
+                  <i className={`donem-durum ${donemPrim ? "hesaplandi" : gelecek ? "kapandi" : donem.durum}`} />
+                  {gelecek
+                    ? "Bekliyor"
+                    : buAy
+                      ? (donemPrim ? "Bu ay · Hesaplandı" : "Bu ay")
+                      : donemPrim
+                        ? "Hesaplandı"
+                        : donem.durum === "kapandi"
+                          ? "Kapalı"
+                          : "Açık"}
                 </small>
               </button>
             );
@@ -354,8 +441,17 @@ export default function PrimHesaplama() {
                     {sonuc?.hata && <small className="dosya-hata">{sonuc.hata}</small>}
                   </div>
                   <label
-                    className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""}`}
+                    className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""} ${
+                      yukleniyor && yukleniyor !== dosya.tip ? "kilitli" : ""
+                    }`}
                     aria-live="polite"
+                    onClick={(event) => {
+                      if (yukleniyor || hesaplaniyor) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setBekletUyari(true);
+                      }
+                    }}
                   >
                     <input
                       type="file"
@@ -451,6 +547,91 @@ export default function PrimHesaplama() {
             </div>
           </div>
         </section>
+      )}
+
+      {bekletUyari && (
+        <div
+          className="prim-uyari-arka"
+          role="presentation"
+          onClick={() => setBekletUyari(false)}
+        >
+          <div
+            className="prim-uyari-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="prim-uyari-baslik"
+            aria-describedby="prim-uyari-metin"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="prim-uyari-ikon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v6M12 16.5h.01" />
+              </svg>
+            </div>
+            <span className="prim-uyari-etiket">Bilgilendirme</span>
+            <h3 id="prim-uyari-baslik">
+              {hesaplaniyor ? "Hesaplama devam ediyor" : "Yükleme devam ediyor"}
+            </h3>
+            <p id="prim-uyari-metin">
+              {hesaplaniyor ? (
+                <>
+                  Sabrınız için teşekkür ederiz. Şu anda prim hesabı devam etmektedir.
+                  Lütfen işlemin tamamlanmasını bekleyiniz.
+                </>
+              ) : (
+                <>
+                  Sabrınız için teşekkür ederiz. Şu anda bir dosya yükleme aşamasındadır.
+                  Lütfen mevcut yüklemenin tamamlanmasını bekleyiniz; ardından diğer
+                  dosyaları yükleyebilirsiniz.
+                  {yukleniyor ? (
+                    <>
+                      {" "}
+                      <strong>Şu an yüklenen:</strong> {TIP_ADI[yukleniyor] || yukleniyor}
+                    </>
+                  ) : null}
+                </>
+              )}
+            </p>
+            <div className="prim-uyari-butonlar">
+              <button type="button" className="btn" onClick={() => setBekletUyari(false)}>
+                Anladım, bekliyorum
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bilgiModal && (
+        <div
+          className="prim-uyari-arka"
+          role="presentation"
+          onClick={() => setBilgiModal(null)}
+        >
+          <div
+            className="prim-uyari-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="prim-yil-uyari-baslik"
+            aria-describedby="prim-yil-uyari-metin"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="prim-uyari-ikon prim-uyari-ikon-yil" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="5" width="18" height="16" rx="2" />
+                <path d="M3 10h18M8 3v4M16 3v4" />
+              </svg>
+            </div>
+            <span className="prim-uyari-etiket">Dönem açma</span>
+            <h3 id="prim-yil-uyari-baslik">{bilgiModal.baslik}</h3>
+            <p id="prim-yil-uyari-metin">{bilgiModal.metin}</p>
+            <div className="prim-uyari-butonlar">
+              <button type="button" className="btn" onClick={() => setBilgiModal(null)}>
+                Tamam
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

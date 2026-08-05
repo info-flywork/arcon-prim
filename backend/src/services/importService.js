@@ -196,6 +196,24 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
   const grupNorm = normalizeName(grup);
   if (!candidates.length) return null;
 
+  // PARFÜM TÜM MARKALAR / TÜM MARKALAR → SISLEY'e düşmesin; Puig-Hermes-DG-GIV TEK senaryosu
+  const isTumParfum = grupNorm.includes("TUM MARKA")
+    || (grupNorm.includes("PARFUM") && grupNorm.includes("TUM"));
+  if (isTumParfum) {
+    const tip = uzmanTipi || "TEK_UZMAN";
+    const puanli = candidates
+      .filter((b) => b.marka_grubu_key && /PUIG|HERMES|DG|GIV/i.test(String(b.marka_grubu_key)))
+      .map((b) => ({
+        b,
+        sc: (b.uzman_tipi === tip ? 2 : 0) + (/PUIG.*HERMES|HERMES.*DG/i.test(String(b.marka_grubu_key)) ? 2 : 1),
+      }))
+      .sort((a, c) => c.sc - a.sc);
+    if (puanli[0]) return puanli[0].b;
+    const tek = candidates.find((b) => b.uzman_tipi === tip && b.marka_grubu_key)
+      || candidates.find((b) => b.uzman_tipi === tip);
+    if (tek) return tek;
+  }
+
   const tokens = grupNorm.split(/[+\/&,]/).map((t) => t.trim()).filter(Boolean);
   const aliases = new Set(tokens);
   for (const t of tokens) {

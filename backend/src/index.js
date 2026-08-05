@@ -57,11 +57,11 @@ function donemAd(yil, ay) {
   return `${DONEM_AYLAR[ay]} ${yil}`;
 }
 
-/** İlk açık dönemden bugüne kadar eksik ayları açar (Temmuz boşluğu, Eylül otomatik vb.). */
+/** İçinde bulunulan yılın sonuna kadar eksik ayları açar (gelecek aylar UI'da disabled). */
 async function donemleriSenkronizeEt() {
   const simdi = new Date();
   const bitisYil = simdi.getFullYear();
-  const bitisAy = simdi.getMonth() + 1;
+  const bitisAy = 12; // bu yılın kalan ayları listede görünsün
 
   const [mevcut] = await pool.query("SELECT yil, ay FROM donem ORDER BY yil ASC, ay ASC");
   let y = bitisYil;
@@ -84,10 +84,65 @@ async function donemleriSenkronizeEt() {
   }
 }
 
+async function yilDonemleriniAc(yil) {
+  for (let ay = 1; ay <= 12; ay += 1) {
+    await pool.query(
+      "INSERT INTO donem (yil, ay, ad) VALUES (?,?,?) ON DUPLICATE KEY UPDATE ad=VALUES(ad)",
+      [yil, ay, donemAd(yil, ay)]
+    );
+  }
+  const [rows] = await pool.query(
+    "SELECT * FROM donem WHERE yil=? ORDER BY ay ASC",
+    [yil]
+  );
+  return rows;
+}
+
 app.get("/api/donemler", wrap(async (req, res) => {
   await donemleriSenkronizeEt();
   const [rows] = await pool.query("SELECT * FROM donem ORDER BY yil ASC, ay ASC");
   res.json(rows);
+}));
+
+/** Yeni takvim yılı dönemlerini açar. Yıl henüz gelmediyse reddeder. */
+app.post("/api/donemler/yeni-yil", wrap(async (req, res) => {
+  const simdiYil = new Date().getFullYear();
+  const [[row]] = await pool.query("SELECT MAX(yil) AS max_yil FROM donem");
+  const sonYil = Number(row?.max_yil) || simdiYil;
+  const hedefYil = Number(req.body?.yil) || sonYil + 1;
+
+  if (!Number.isFinite(hedefYil) || hedefYil < 2000 || hedefYil > 2100) {
+    return res.status(400).json({ hata: "Geçersiz yıl." });
+  }
+
+  if (hedefYil > simdiYil) {
+    return res.status(400).json({
+      hata: `Henüz ${hedefYil} yılına gelinmediği için dönem açılamaz.`,
+      yil: hedefYil,
+      kod: "yil_gelmedi",
+    });
+  }
+
+  if (hedefYil <= sonYil) {
+    const [varOlan] = await pool.query(
+      "SELECT * FROM donem WHERE yil=? ORDER BY ay ASC",
+      [hedefYil]
+    );
+    return res.json({
+      yil: hedefYil,
+      donemler: varOlan,
+      mesaj: `${hedefYil} dönemleri zaten açık.`,
+      zatenAcik: true,
+    });
+  }
+
+  const donemler = await yilDonemleriniAc(hedefYil);
+  res.json({
+    yil: hedefYil,
+    donemler,
+    mesaj: `${hedefYil} yılı dönemleri açıldı.`,
+    zatenAcik: false,
+  });
 }));
 
 app.post("/api/donemler", wrap(async (req, res) => {
@@ -979,6 +1034,12 @@ async function primRaporuVerisi(donemId) {
 
   // Her satırı Excel kolonlarına dağıt
   function normalize(s) { return String(s || "").toLocaleUpperCase("tr-TR").trim(); }
+  function normAscii(s) {
+    return normalize(s)
+      .replace(/İ/g, "I").replace(/I/g, "I")
+      .replace(/Ş/g, "S").replace(/Ğ/g, "G")
+      .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C");
+  }
 
   function grupHedefToplami(magazaId, markalarJson) {
     const liste = hedefByMagazaMarka.get(magazaId) || [];
@@ -1004,6 +1065,17 @@ async function primRaporuVerisi(donemId) {
     try { markalar = Array.isArray(r.markalar) ? r.markalar : JSON.parse(r.markalar || "[]"); } catch {}
     markalar = genisletMarkalar(markalar, r.grup_adi);
     const grup = normalize(markalar.join(" "));
+    const grupAdi = normAscii(r.grup_adi || r.marka_grubu_adi || "");
+    const bolumAdiAscii = normAscii(r.bolum_adi || "");
+    const isDiorBolum = bolumAdiAscii.includes("DIOR")
+      || (grupAdi.includes("DIOR") && !grupAdi.includes("TUM"));
+    const isLpBolum = bolumAdiAscii.includes("LP")
+      && !bolumAdiAscii.includes("DG")
+      && !grupAdi.includes("DOLCE")
+      && !grupAdi.includes("GABBANA");
+    // Not: "La Prairie + Dolce" ataması BEYMEN DG bölümüdür; LP kolonu değil.
+    const isTumParfum = grupAdi.includes("TUM MARKA")
+      || (grupAdi.includes("PARFUM") && grupAdi.includes("TUM"));
 
     // F: baseline %1 (herkes)
     const F = +(E * 0.01).toFixed(2);
@@ -1061,35 +1133,54 @@ async function primRaporuVerisi(donemId) {
       ? Number(ciroHedefDetay.hedefToplam)
       : grupHedefToplami(r.magaza_id, markalar);
 
-    // M-P: Dior kuralları (sadece Dior grubu için)
+    // M-P: Dior bölümü, Sevil Parfüm Tüm, veya Sevil DIOR ekstra detay (DG+LP / Sisley…)
     let M = 0, N = 0, O = 0, P = 0;
-    if (grup.includes("DIOR")) {
-      const magazaBirTuttu = detay.some((d) => d.kriter === "magaza_birinci" && d.tuttu);
-      const makyajTuttu = detay.some((d) => d.kriter === "makyaj_siralama" && d.tuttu);
-      const parfumTuttu = detay.some((d) => d.kriter === "parfum_siralama" && d.tuttu);
-      const ciltTuttu = detay.some((d) => d.kriter === "cilt_siralama" && d.tuttu);
-      if (magazaBirTuttu) M = +(E * 0.005).toFixed(2);
-      if (makyajTuttu) N = +(E * 0.0033).toFixed(2);
-      if (parfumTuttu) O = +(E * 0.0033).toFixed(2);
-      if (ciltTuttu) P = +(E * 0.0033).toFixed(2);
+    const sevilDiorDetaylar = detay.filter((d) =>
+      d.tuttu && d.kriter && /DIOR/i.test(String(d.kural || ""))
+    );
+    if (isDiorBolum || isTumParfum) {
+      for (const d of detay.filter((x) => x.tuttu && x.kriter)) {
+        const tutar = d.tutar != null
+          ? +Number(d.tutar).toFixed(2)
+          : +(E * Number(d.oran || 0) / 100).toFixed(2);
+        if (d.kriter === "magaza_birinci" || d.kriter === "kumul_siralama") M += tutar;
+        else if (d.kriter === "makyaj_siralama") N += tutar;
+        else if (d.kriter === "parfum_siralama") O += tutar;
+        else if (d.kriter === "cilt_siralama") P += tutar;
+      }
+      M = +M.toFixed(2); N = +N.toFixed(2); O = +O.toFixed(2); P = +P.toFixed(2);
+    } else if (sevilDiorDetaylar.length) {
+      for (const d of sevilDiorDetaylar) {
+        const tutar = d.tutar != null
+          ? +Number(d.tutar).toFixed(2)
+          : +(E * Number(d.oran || 0) / 100).toFixed(2);
+        if (d.kriter === "magaza_birinci") M += tutar;
+        else if (d.kriter === "parfum_siralama") O += tutar;
+      }
+      M = +M.toFixed(2); O = +O.toFixed(2);
     }
 
     // Q: LP kuralları toplamı (Cilt 1., Mağaza 1. vs)
     let Q = 0;
-    if (grup.includes("LP")) {
-      Q = +detay.filter((d) => d.tuttu && d.kriter && (d.kriter.includes("cilt") || d.kriter === "magaza_birinci" || d.kriter === "ozel"))
+    if (isLpBolum) {
+      Q = +detay.filter((d) => d.tuttu && d.kriter && (String(d.kriter).includes("cilt") || d.kriter === "magaza_birinci" || d.kriter === "ozel"))
         .reduce((a, d) => a + Number(d.oran || 0) * E / 100, 0).toFixed(2);
     }
 
-    // R, S, T: Parfüm / sıralama_marka kuralları (Dior olmayan uzmanlar için)
-    // Sistemin siralama_prim değerini R/S/T'ye dağıt
+    // R, S, T: Parfüm / sıralama_marka kuralları (Dior/LP bölümü dışı)
     let R = 0, S = 0, T = 0;
-    if (!grup.includes("DIOR") && !grup.includes("LP") && siralamaPrim > 0) {
-      // detay_json'daki sıralama_marka kurallarını al
+    if (!isDiorBolum && !isLpBolum && siralamaPrim > 0) {
+      // Sevil DIOR M/O kalemlerini R/S'den düş (tutar alanlı veya oran×E)
+      const diorKalem = detay
+        .filter((d) => d.tuttu && /DIOR/i.test(String(d.kural || ""))
+          && (d.kriter === "magaza_birinci" || d.kriter === "parfum_siralama"))
+        .reduce((a, d) => a + (d.tutar != null ? Number(d.tutar) : Number(d.oran || 0) * E / 100), 0);
       const parfumKurallari = detay.filter((d) =>
-        d.tuttu && (d.kriter === "siralama_marka" || d.kriter === "parfum_siralama")
+        d.tuttu
+        && !/DIOR/i.test(String(d.kural || ""))
+        && (d.kriter === "siralama_marka" || d.kriter === "parfum_siralama" || d.kriter === "kumul_siralama")
       );
-      let kalan = siralamaPrim;
+      let kalan = Math.max(0, siralamaPrim - diorKalem);
       for (const k of parfumKurallari) {
         const oran = Number(k.oran || 0);
         const tutar = +(E * oran / 100).toFixed(2);
@@ -1097,8 +1188,7 @@ async function primRaporuVerisi(donemId) {
         else if (oran === 0.5 && S === 0) { S = tutar; kalan -= tutar; }
         else if (oran === 0.5 && T === 0) { T = tutar; kalan -= tutar; }
       }
-      // Kural detayı yoksa kalan hepsini R'ye at
-      if (R === 0 && S === 0 && T === 0 && siralamaPrim > 0) R = +siralamaPrim.toFixed(2);
+      if (R === 0 && S === 0 && T === 0 && kalan > 0) R = +kalan.toFixed(2);
     }
 
     // U: Nisan'dan kalan (devreden prim)

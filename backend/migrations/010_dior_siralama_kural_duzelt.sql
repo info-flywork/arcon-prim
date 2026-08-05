@@ -25,3 +25,16 @@ UPDATE prim_kural
 INSERT INTO prim_kural_hedef (kural_id, hedef_tipi, hedef_sira, hedef_marka_sayisi, sira)
 SELECT 60, 'genel_siralama', 3, NULL, 1 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM prim_kural_hedef WHERE kural_id = 60);
+
+-- LP GRUBU: Cilt 1.lik ozel → cilt_siralama
+UPDATE prim_kural
+   SET kriter_key = 'cilt_siralama'
+ WHERE id IN (74, 78) AND kriter_key = 'ozel' AND kriter_adi LIKE 'CİLT BAKIMINDA 1%';
+
+INSERT INTO prim_kural_hedef (kural_id, hedef_tipi, hedef_sira, hedef_marka_sayisi, sira)
+SELECT 74, 'genel_siralama', 1, NULL, 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM prim_kural_hedef WHERE kural_id = 74);
+
+INSERT INTO prim_kural_hedef (kural_id, hedef_tipi, hedef_sira, hedef_marka_sayisi, sira)
+SELECT 78, 'genel_siralama', 1, NULL, 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM prim_kural_hedef WHERE kural_id = 78);
