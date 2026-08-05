@@ -192,6 +192,8 @@ const importers = {
 
 /** Uzun importlar (stok/zeops) proxy timeout yemesin diye arka planda işlenir. */
 const importJobs = new Map();
+/** Aynı tipte eşzamanlı import kilidi (özellikle stok → urun lock timeout). */
+const aktifImportTipleri = new Set();
 
 function importJobTemizle() {
   const sinir = Date.now() - 60 * 60 * 1000;
@@ -207,6 +209,14 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
   if (!req.file) return res.status(400).json({ hata: "Dosya yüklenmedi (form alanı: dosya)" });
   const donemId = Number(req.params.donemId);
   if (await donemKilitli(donemId, res)) return;
+
+  if (aktifImportTipleri.has(tip)) {
+    return res.status(409).json({
+      hata: `${tip} şu an işleniyor. Bitmesini bekleyin, tekrar yüklemeyin.`,
+      kod: "import_devam",
+    });
+  }
+
   // Multer HTTP başlığından Latin-1 varsayımıyla dosya adını okuyor;
   // Türkçe adları UTF-8 olarak yeniden yorumla (mojibake'i önler)
   const dosyaAdi = Buffer.from(req.file.originalname, "latin1").toString("utf8");
@@ -214,6 +224,7 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
   const jobId = crypto.randomBytes(8).toString("hex");
 
   importJobTemizle();
+  aktifImportTipleri.add(tip);
   importJobs.set(jobId, {
     durum: "isleniyor",
     tip,
@@ -250,6 +261,8 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
           baslangic: importJobs.get(jobId)?.baslangic,
           bitis: Date.now(),
         });
+      } finally {
+        aktifImportTipleri.delete(tip);
       }
     })();
   });

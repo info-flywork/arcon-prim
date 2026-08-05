@@ -671,6 +671,25 @@ async function importSiralama(buffer, donemId, dosyaAdi) {
 }
 
 // ---- 6. Stok Liste -> kanonik ürün + alias tamamlama -----------------------
+async function withLockRetry(fn, maxAttempts = 6) {
+  let last;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      const lock =
+        e.code === "ER_LOCK_WAIT_TIMEOUT" ||
+        e.errno === 1205 ||
+        e.code === "ER_LOCK_DEADLOCK" ||
+        e.errno === 1213;
+      if (!lock || attempt === maxAttempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1) + Math.random() * 200));
+    }
+  }
+  throw last;
+}
+
 async function importStok(buffer, donemId, dosyaAdi) {
   const rows = readSheet(
     buffer,
@@ -679,15 +698,43 @@ async function importStok(buffer, donemId, dosyaAdi) {
   );
   const formatHata = formatKontrol(rows, "stok");
   if (formatHata) return formatHata;
+
+  // Tek mega-transaction tüm dosyayı kilitleyip concurrent job'larla
+  // Lock wait timeout üretiyordu — küçük batch'lerle commit ediyoruz.
+  const BATCH = 40;
   const conn = await pool.getConnection();
   let eklenen = 0, aliasEklenen = 0, atlanan = 0, err = 0;
+  let batchCount = 0;
+  let txOpen = false;
+
+  async function ensureTx() {
+    if (!txOpen) {
+      await conn.beginTransaction();
+      txOpen = true;
+    }
+  }
+  async function commitBatch() {
+    if (txOpen) {
+      await conn.commit();
+      txOpen = false;
+      batchCount = 0;
+    }
+  }
+
   try {
-    await conn.beginTransaction();
+    try {
+      await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      await conn.query("SET SESSION innodb_lock_wait_timeout = 10");
+    } catch {
+      /* hosting kısıtlı olabilir */
+    }
+
     const resolver = await loadProductResolver(conn);
     const [products] = await conn.query("SELECT id, uniq_kod, durum, marka, urun_adi FROM urun");
     const productByUniq = new Map(products.map((product) => [product.uniq_kod, product]));
 
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      await ensureTx();
       const row = rows[rowIndex];
       const barkod = cleanRaw(pick(row, "BARKOD 1", "BARKOD")) || null;
       const stokKodu = pick(row, "STOK KODU");
@@ -701,7 +748,7 @@ async function importStok(buffer, donemId, dosyaAdi) {
       const match = resolveProduct(resolver, { barcode: barkod, stockCode: stokKodu });
       if (match.status === "urun_cakisma") {
         const first = identifiers[0];
-        await conn.query(
+        await withLockRetry(() => conn.query(
           `INSERT INTO urun_esleme_cakisma
              (tip,deger_ham,deger_normalize,kaynak,aday_urunler_json)
            VALUES (?,?,?,?,?)
@@ -709,8 +756,10 @@ async function importStok(buffer, donemId, dosyaAdi) {
              aday_urunler_json=VALUES(aday_urunler_json), kaynak=VALUES(kaynak), durum='acik'`,
           [first.tip, first.raw, first.normalized, `stok_import:${dosyaAdi}`,
             JSON.stringify(match.productIds.map((productId) => ({ productId, row: rowIndex + 2 })))]
-        );
+        ));
         err++;
+        batchCount++;
+        if (batchCount >= BATCH) await commitBatch();
         continue;
       }
 
@@ -727,14 +776,14 @@ async function importStok(buffer, donemId, dosyaAdi) {
         : productByUniq.get(canonicalCode);
 
       if (!product) {
-        const productId = await createProduct({
+        const productId = await withLockRetry(() => createProduct({
           uniq_kod: canonicalCode,
           marka: pick(row, "MARKA") || "Bilinmiyor",
           urun_adi: pick(row, "UNIQ ADI") || stokAdi || `İncelenecek stok ${rowIndex + 2}`,
           aks: pick(row, "AKS"),
           cinsiyet: pick(row, "CİNSİYET", "CINSIYET"),
           durum: uniq ? "aktif" : "inceleme",
-        }, conn);
+        }, conn));
         product = {
           id: productId,
           uniq_kod: canonicalCode,
@@ -747,13 +796,15 @@ async function importStok(buffer, donemId, dosyaAdi) {
         eklenen++;
       } else if (product.uniq_kod !== canonicalCode) {
         // Mevcut ürünün uniq'ini Stok Liste kuralına çek (çakışma yoksa)
-        const [[owner]] = await conn.query("SELECT id FROM urun WHERE uniq_kod=? AND id<>? LIMIT 1", [
-          canonicalCode, product.id,
-        ]);
+        const [[owner]] = await withLockRetry(() => conn.query(
+          "SELECT id FROM urun WHERE uniq_kod=? AND id<>? LIMIT 1",
+          [canonicalCode, product.id]
+        ));
         if (!owner) {
-          await conn.query("UPDATE urun SET uniq_kod=?, durum=IF(?,'aktif',durum) WHERE id=?", [
-            canonicalCode, uniq ? 1 : 0, product.id,
-          ]);
+          await withLockRetry(() => conn.query(
+            "UPDATE urun SET uniq_kod=?, durum=IF(?,'aktif',durum) WHERE id=?",
+            [canonicalCode, uniq ? 1 : 0, product.id]
+          ));
           productByUniq.delete(product.uniq_kod);
           product.uniq_kod = canonicalCode;
           productByUniq.set(canonicalCode, product);
@@ -764,11 +815,11 @@ async function importStok(buffer, donemId, dosyaAdi) {
       for (const identifier of identifiers) {
         try {
           const existed = resolver.identifierMap.has(identifier.key);
-          const identifierId = await addIdentifier(conn, product.id, {
+          const identifierId = await withLockRetry(() => addIdentifier(conn, product.id, {
             tip: identifier.tip,
             deger: identifier.raw,
             kaynak: "stok_import",
-          });
+          }));
           if (!existed) newAlias++;
           if (product.durum === "aktif") {
             resolver.identifierMap.set(identifier.key, {
@@ -791,14 +842,19 @@ async function importStok(buffer, donemId, dosyaAdi) {
       }
       aliasEklenen += newAlias;
       if (!newAlias && match.status === "ok") atlanan++;
+
+      batchCount++;
+      if (batchCount >= BATCH) await commitBatch();
     }
 
+    await ensureTx();
     await conn.query(
       "INSERT INTO import_log (donem_id, tip, dosya_adi, satir_sayisi, hatali_satir, mesaj) VALUES (?,?,?,?,?,?)",
       [donemId || null, "uniq_kod", dosyaAdi, rows.length, err,
         `${eklenen} yeni ürün, ${aliasEklenen} yeni kimlik; ${atlanan} satır değişmedi`]
     );
-    await conn.commit();
+    await commitBatch();
+
     return {
       toplam: rows.length,
       eslesen: eklenen + aliasEklenen,
@@ -806,7 +862,10 @@ async function importStok(buffer, donemId, dosyaAdi) {
       mesaj: `${eklenen} yeni ürün, ${aliasEklenen} yeni barkod/referans eklendi; ${atlanan} satır zaten günceldi`,
     };
   } catch (e) {
-    await conn.rollback();
+    if (txOpen) {
+      try { await conn.rollback(); } catch { /* ignore */ }
+      txOpen = false;
+    }
     throw e;
   } finally {
     conn.release();
