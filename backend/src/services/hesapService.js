@@ -505,12 +505,14 @@ async function hesapla(donemId, options = {}) {
     // Sevil DIOR kolonları: grupta DIOR olmasa bile (DG+LP, Sisley…) DIOR satış dilimi
     // üzerinden Mağaza %0.50 / Parfüm ilk 2 %0.33 (Excel Prim Hesaplama M/O)
     const sevilDiorEsas = new Map(); // "uzman|magaza" -> DIOR prime esas
+    const beyanDurumGuncelle = []; // { id, durum } — satır satır UPDATE yerine toplu
+
     for (const b of beyanlar) {
       const urunMarka = markaCoz(b);
       b.urun_marka = urunMarka;
       if (!urunMarka) {
         // Atama var olsa bile marka bilinmeden grup kararı verilemez
-        await conn.query("UPDATE satis_beyan SET eslesme_durum='urun_yok' WHERE id=?", [b.id]);
+        beyanDurumGuncelle.push({ id: b.id, durum: "urun_yok" });
         continue;
       }
       const atama = bolumSec(b.uzman_id, b.magaza_id, urunMarka);
@@ -527,7 +529,7 @@ async function hesapla(donemId, options = {}) {
             sevilDiorEsas.set(dk, (sevilDiorEsas.get(dk) || 0) + primeEsas);
           }
         }
-        await conn.query("UPDATE satis_beyan SET eslesme_durum='atama_yok' WHERE id=?", [b.id]);
+        beyanDurumGuncelle.push({ id: b.id, durum: "atama_yok" });
         continue;
       }
 
@@ -549,6 +551,23 @@ async function hesapla(donemId, options = {}) {
       ozetMap.get(key).primeEsas += primeEsas;
       ozetMap.get(key).adet += primAdet;
     }
+
+    // Aynı sonuç: eslesme_durum güncellemesi — N tekil UPDATE yerine batch
+    const byDurum = new Map();
+    for (const item of beyanDurumGuncelle) {
+      if (!byDurum.has(item.durum)) byDurum.set(item.durum, []);
+      byDurum.get(item.durum).push(item.id);
+    }
+    for (const [durum, ids] of byDurum) {
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500);
+        await conn.query(
+          `UPDATE satis_beyan SET eslesme_durum=? WHERE id IN (${chunk.map(() => "?").join(",")})`,
+          [durum, ...chunk]
+        );
+      }
+    }
+
     // toplu insert
     for (let i = 0; i < hesapSatirlari.length; i += 500) {
       await conn.query(
