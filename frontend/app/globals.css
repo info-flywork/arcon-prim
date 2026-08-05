@@ -718,11 +718,28 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .prim-uyari-butonlar .btn { padding: 9px 14px; font-size: 11px; }
 
 .panel-alt {
-  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
   margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--cizgi);
 }
+.panel-alt-sol { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
 .panel-alt p { max-width: 610px; color: var(--metin-2); font-size: 11.5px; line-height: 1.55; }
-.panel-alt-ikincil { margin-top: 4px !important; color: #7a8799 !important; }
+.panel-alt-ikincil { margin-top: 0 !important; color: #7a8799 !important; }
+.temizle-btn {
+  padding: 8px 14px !important; border-color: rgba(185, 28, 28, .28) !important;
+  color: #b91c1c !important; background: #fff !important; font-size: 11px !important;
+}
+.temizle-btn:hover:not(:disabled) {
+  color: #fff !important; border-color: transparent !important;
+  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+}
+.temizle-btn:disabled { opacity: .45; cursor: not-allowed; }
+.prim-uyari-ikon-tehlike { color: #b91c1c; background: #fef2f2; }
+.btn.tehlike {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+.btn.tehlike:hover { filter: brightness(1.05); }
+.btn.tehlike:disabled { opacity: .55; cursor: not-allowed; }
 .panel-alt-aksiyonlar {
   display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px;
 }

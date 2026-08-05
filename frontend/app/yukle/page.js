@@ -103,6 +103,8 @@ export default function PrimHesaplama() {
   const [bilgiModal, setBilgiModal] = useState(null); // { baslik, metin }
   const [yeniYilYukleniyor, setYeniYilYukleniyor] = useState(false);
   const [seciliYeniYil, setSeciliYeniYil] = useState(null);
+  const [temizleniyor, setTemizleniyor] = useState(false);
+  const [temizleOnay, setTemizleOnay] = useState(false);
 
   async function donemVerisi(donemId) {
     const [logCevap, dashboardCevap] = await Promise.all([
@@ -223,6 +225,35 @@ export default function PrimHesaplama() {
       });
     } finally {
       setYeniYilYukleniyor(false);
+    }
+  }
+
+  async function donemTemizle() {
+    if (!acikId || temizleniyor || yukleniyor || hesaplaniyor) return;
+    setTemizleniyor(true);
+    setTemizleOnay(false);
+    setMesaj(null);
+    try {
+      const cevap = await fetch(`/api/donemler/${acikId}/temizle`, { method: "DELETE" });
+      const veri = await cevap.json().catch(() => ({}));
+      if (!cevap.ok) throw new Error(veri.hata || "Dönem temizlenemedi");
+      setSonuclar({});
+      setPanel((onceki) => {
+        const kopya = { ...onceki };
+        delete kopya[acikId];
+        return kopya;
+      });
+      setDonemler((liste) =>
+        liste.map((item) =>
+          Number(item.id) === Number(acikId) ? { ...item, durum: "acik" } : item
+        )
+      );
+      await paneliYukle(acikId);
+      setMesaj({ tip: "ok", metin: veri.mesaj || "Dönem verileri temizlendi." });
+    } catch (hata) {
+      setMesaj({ tip: "hata", metin: hata.message });
+    } finally {
+      setTemizleniyor(false);
     }
   }
 
@@ -503,7 +534,7 @@ export default function PrimHesaplama() {
           )}
 
           <div className="panel-alt">
-            <div>
+            <div className="panel-alt-sol">
               <p>
                 {tumDosyalarHazir
                   ? "Tüm dosyalar hazır. Prim hesaplanabilir."
@@ -512,6 +543,20 @@ export default function PrimHesaplama() {
               {primVar && (
                 <p className="panel-alt-ikincil">Bu dönem için hesap sonucu mevcut.</p>
               )}
+              <button
+                type="button"
+                className="btn temizle-btn"
+                disabled={
+                  temizleniyor ||
+                  !!yukleniyor ||
+                  hesaplaniyor ||
+                  acikDonem.durum === "kapandi" ||
+                  (!primVar && DOSYALAR.filter(dosyaHazir).length === 0 && !(acikPanel.loglar || []).length)
+                }
+                onClick={() => setTemizleOnay(true)}
+              >
+                {temizleniyor ? "Temizleniyor…" : "Temizle"}
+              </button>
             </div>
             <div className="panel-alt-aksiyonlar">
               <button
@@ -547,6 +592,56 @@ export default function PrimHesaplama() {
             </div>
           </div>
         </section>
+      )}
+
+      {temizleOnay && (
+        <div
+          className="prim-uyari-arka"
+          role="presentation"
+          onClick={() => !temizleniyor && setTemizleOnay(false)}
+        >
+          <div
+            className="prim-uyari-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="prim-temizle-baslik"
+            aria-describedby="prim-temizle-metin"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="prim-uyari-ikon prim-uyari-ikon-tehlike" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3 2 21h20L12 3z" />
+                <path d="M12 10v5M12 17.5h.01" />
+              </svg>
+            </div>
+            <span className="prim-uyari-etiket">Dikkat</span>
+            <h3 id="prim-temizle-baslik">Dönem verileri silinsin mi?</h3>
+            <p id="prim-temizle-metin">
+              <strong>{acikDonem?.ad}</strong> dönemine yüklenen tüm Excel verileri
+              (uzman-mağaza, sell-out, zeops, hedef, sıralama) ve bu dönem için
+              hesaplanan prim raporu kalıcı olarak silinecektir. Stok listesi
+              (ürün master) korunur. Bu işlem geri alınamaz.
+            </p>
+            <div className="prim-uyari-butonlar">
+              <button
+                type="button"
+                className="btn ikincil"
+                disabled={temizleniyor}
+                onClick={() => setTemizleOnay(false)}
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                className="btn tehlike"
+                disabled={temizleniyor}
+                onClick={donemTemizle}
+              >
+                {temizleniyor ? "Temizleniyor…" : "Evet, temizle"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {bekletUyari && (

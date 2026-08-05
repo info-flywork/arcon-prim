@@ -187,6 +187,53 @@ app.get("/api/import-log/:donemId", wrap(async (req, res) => {
   res.json(rows);
 }));
 
+/** Dönemin tüm yüklenen Excel verilerini + prim hesap sonuçlarını siler. Stok master kalır. */
+app.delete("/api/donemler/:id/temizle", wrap(async (req, res) => {
+  const donemId = Number(req.params.id);
+  if (await donemKilitli(donemId, res)) return;
+
+  const [[donem]] = await pool.query("SELECT id, ad, durum FROM donem WHERE id=?", [donemId]);
+  if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı" });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // FK sırası: hesap satırları → özet → input tablolar → log
+    const [hesap] = await conn.query("DELETE FROM prim_hesap_satir WHERE donem_id=?", [donemId]);
+    const [ozet] = await conn.query("DELETE FROM prim_ozet WHERE donem_id=?", [donemId]);
+    const [beyan] = await conn.query("DELETE FROM satis_beyan WHERE donem_id=?", [donemId]);
+    const [sellout] = await conn.query("DELETE FROM sellout WHERE donem_id=?", [donemId]);
+    const [hedef] = await conn.query("DELETE FROM hedef WHERE donem_id=?", [donemId]);
+    const [siralama] = await conn.query("DELETE FROM siralama WHERE donem_id=?", [donemId]);
+    const [atama] = await conn.query("DELETE FROM uzman_atama WHERE donem_id=?", [donemId]);
+    const [log] = await conn.query("DELETE FROM import_log WHERE donem_id=?", [donemId]);
+    await conn.query("UPDATE donem SET durum='acik' WHERE id=?", [donemId]);
+    await conn.commit();
+
+    const silinen = {
+      prim_hesap_satir: hesap.affectedRows,
+      prim_ozet: ozet.affectedRows,
+      satis_beyan: beyan.affectedRows,
+      sellout: sellout.affectedRows,
+      hedef: hedef.affectedRows,
+      siralama: siralama.affectedRows,
+      uzman_atama: atama.affectedRows,
+      import_log: log.affectedRows,
+    };
+    await audit("donem", donemId, "temizle", { donem: donem.ad, eski_durum: donem.durum, silinen });
+    res.json({
+      ok: true,
+      mesaj: `${donem.ad} dönemindeki yüklenen dosyalar ve prim sonuçları temizlendi.`,
+      silinen,
+    });
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}));
+
 // ---------- Uniq Kod vs Stok Liste farkları ----------
 app.get("/api/uniq-farklar", wrap(async (req, res) => {
   res.json(await getUniqFarklar());
