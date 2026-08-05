@@ -57,31 +57,48 @@ function donemAd(yil, ay) {
   return `${DONEM_AYLAR[ay]} ${yil}`;
 }
 
+/** Eşzamanlı GET'lerin aynı sync'i üst üste yazmasını engeller. */
+let donemSyncPromise = null;
+
 /** İçinde bulunulan yılın sonuna kadar eksik ayları açar (gelecek aylar UI'da disabled). */
 async function donemleriSenkronizeEt() {
-  const simdi = new Date();
-  const bitisYil = simdi.getFullYear();
-  const bitisAy = 12; // bu yılın kalan ayları listede görünsün
+  if (donemSyncPromise) return donemSyncPromise;
 
-  const [mevcut] = await pool.query("SELECT yil, ay FROM donem ORDER BY yil ASC, ay ASC");
-  let y = bitisYil;
-  let a = bitisAy;
-  if (mevcut.length > 0) {
-    y = Number(mevcut[0].yil);
-    a = Number(mevcut[0].ay);
-  }
+  donemSyncPromise = (async () => {
+    const simdi = new Date();
+    const bitisYil = simdi.getFullYear();
+    const bitisAy = 12; // bu yılın kalan ayları listede görünsün
 
-  while (y < bitisYil || (y === bitisYil && a <= bitisAy)) {
-    await pool.query(
-      "INSERT INTO donem (yil, ay, ad) VALUES (?,?,?) ON DUPLICATE KEY UPDATE ad=VALUES(ad)",
-      [y, a, donemAd(y, a)]
-    );
-    a += 1;
-    if (a > 12) {
-      a = 1;
-      y += 1;
+    const [mevcut] = await pool.query("SELECT yil, ay FROM donem ORDER BY yil ASC, ay ASC");
+    const varOlan = new Set(mevcut.map((r) => `${Number(r.yil)}-${Number(r.ay)}`));
+
+    let y = bitisYil;
+    let a = 1;
+    if (mevcut.length > 0) {
+      y = Number(mevcut[0].yil);
+      a = Number(mevcut[0].ay);
     }
-  }
+
+    // Sadece eksik ayları ekle — her istekte UPDATE yapma (kilit / timeout riski)
+    while (y < bitisYil || (y === bitisYil && a <= bitisAy)) {
+      const anahtar = `${y}-${a}`;
+      if (!varOlan.has(anahtar)) {
+        await pool.query(
+          "INSERT IGNORE INTO donem (yil, ay, ad) VALUES (?,?,?)",
+          [y, a, donemAd(y, a)]
+        );
+      }
+      a += 1;
+      if (a > 12) {
+        a = 1;
+        y += 1;
+      }
+    }
+  })().finally(() => {
+    donemSyncPromise = null;
+  });
+
+  return donemSyncPromise;
 }
 
 async function yilDonemleriniAc(yil) {
@@ -99,7 +116,12 @@ async function yilDonemleriniAc(yil) {
 }
 
 app.get("/api/donemler", wrap(async (req, res) => {
-  await donemleriSenkronizeEt();
+  try {
+    await donemleriSenkronizeEt();
+  } catch (e) {
+    // Sync kilit/timeout olsa bile mevcut dönemleri döndür — UI spinner'da kalmasın
+    console.error("donem senkron hatası:", e.message);
+  }
   const [rows] = await pool.query("SELECT * FROM donem ORDER BY yil ASC, ay ASC");
   res.json(rows);
 }));
