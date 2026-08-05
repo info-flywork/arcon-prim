@@ -545,7 +545,7 @@ export default function PrimHesaplama() {
               )}
               <button
                 type="button"
-                className="btn temizle-btn"
+                className="btn tehlike temizle-btn"
                 disabled={
                   temizleniyor ||
                   !!yukleniyor ||

@@ -725,21 +725,33 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .panel-alt p { max-width: 610px; color: var(--metin-2); font-size: 11.5px; line-height: 1.55; }
 .panel-alt-ikincil { margin-top: 0 !important; color: #7a8799 !important; }
 .temizle-btn {
-  padding: 8px 14px !important; border-color: rgba(185, 28, 28, .28) !important;
-  color: #b91c1c !important; background: #fff !important; font-size: 11px !important;
+  padding: 9px 16px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.28);
 }
 .temizle-btn:hover:not(:disabled) {
-  color: #fff !important; border-color: transparent !important;
-  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.35);
 }
-.temizle-btn:disabled { opacity: .45; cursor: not-allowed; }
 .prim-uyari-ikon-tehlike { color: #b91c1c; background: #fef2f2; }
 .btn.tehlike {
-  color: #fff; border-color: transparent;
+  color: #fff;
+  border: 0;
   background: linear-gradient(135deg, #dc2626, #b91c1c);
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.28);
 }
-.btn.tehlike:hover { filter: brightness(1.05); }
-.btn.tehlike:disabled { opacity: .55; cursor: not-allowed; }
+.btn.tehlike:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.35);
+}
+.btn.tehlike:disabled {
+  background: #e8a0a0;
+  color: #fff;
+  opacity: 1;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
 .panel-alt-aksiyonlar {
   display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px;
 }
