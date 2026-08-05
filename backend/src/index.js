@@ -193,7 +193,18 @@ const importers = {
 /** Uzun importlar (stok/zeops) proxy timeout yemesin diye arka planda işlenir. */
 const importJobs = new Map();
 /** Aynı tipte eşzamanlı import kilidi (özellikle stok → urun lock timeout). */
-const aktifImportTipleri = new Set();
+const aktifImportTipleri = new Map(); // tip -> baslangicMs
+const IMPORT_KILIT_MAX_MS = 20 * 60 * 1000;
+
+function importTipKilitliMi(tip) {
+  const bas = aktifImportTipleri.get(tip);
+  if (!bas) return false;
+  if (Date.now() - bas > IMPORT_KILIT_MAX_MS) {
+    aktifImportTipleri.delete(tip);
+    return false;
+  }
+  return true;
+}
 
 function importJobTemizle() {
   const sinir = Date.now() - 60 * 60 * 1000;
@@ -210,9 +221,10 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
   const donemId = Number(req.params.donemId);
   if (await donemKilitli(donemId, res)) return;
 
-  if (aktifImportTipleri.has(tip)) {
+  if (importTipKilitliMi(tip)) {
+    const sn = Math.round((Date.now() - aktifImportTipleri.get(tip)) / 1000);
     return res.status(409).json({
-      hata: `${tip} şu an işleniyor. Bitmesini bekleyin, tekrar yüklemeyin.`,
+      hata: `${tip} şu an işleniyor (${sn} sn). Bitmesini bekleyin, tekrar yüklemeyin.`,
       kod: "import_devam",
     });
   }
@@ -224,7 +236,7 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
   const jobId = crypto.randomBytes(8).toString("hex");
 
   importJobTemizle();
-  aktifImportTipleri.add(tip);
+  aktifImportTipleri.set(tip, Date.now());
   importJobs.set(jobId, {
     durum: "isleniyor",
     tip,
@@ -266,6 +278,24 @@ app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, r
       }
     })();
   });
+}));
+
+/** Takılı import kilidini elle aç (stok 'işleniyor' diye takılırsa). */
+app.post("/api/import-kilit-ac/:tip?", wrap(async (req, res) => {
+  const tip = req.params.tip || "stok";
+  const vardi = aktifImportTipleri.has(tip);
+  aktifImportTipleri.delete(tip);
+  for (const [id, job] of importJobs) {
+    if (job.tip === tip && job.durum === "isleniyor") {
+      importJobs.set(id, {
+        ...job,
+        durum: "hata",
+        hata: "İşlem elle iptal edildi (kilit açıldı).",
+        bitis: Date.now(),
+      });
+    }
+  }
+  res.json({ ok: true, tip, kilitAcildi: vardi, mesaj: vardi ? `${tip} kilidi açıldı.` : `${tip} kilidi zaten yoktu.` });
 }));
 
 app.get("/api/import-job/:jobId", wrap(async (req, res) => {
