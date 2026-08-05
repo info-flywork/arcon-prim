@@ -290,7 +290,20 @@ export default function PrimHesaplama() {
         continue;
       }
       if (cevap.status === 404 || job.kod === "job_yok") {
-        // PM2 restart vb. — panelden doğrula
+        // PM2 restart vb. — panelden / dönem durumundan doğrula
+        if (tip === "hesap") {
+          const liste = await fetch("/api/donemler").then((r) => r.json()).catch(() => []);
+          const donem = Array.isArray(liste)
+            ? liste.find((d) => Number(d.id) === Number(acikId))
+            : null;
+          if (donem?.durum === "hesaplandi") {
+            return {
+              tamamlandi: true,
+              sonuc: { not: "Hesap sunucuda tamamlanmış görünüyor.", uzmanMagazaSayisi: 0, toplamPrim: 0 },
+            };
+          }
+          throw new Error(job.hata || "Hesap durumu alınamadı. Sayfayı yenileyip kontrol edin.");
+        }
         const veri = await paneliYukle(acikId);
         const dosya = DOSYALAR.find((d) => d.tip === tip);
         const hazir = hazirlikFromDashboard(veri.dashboard);
@@ -307,9 +320,19 @@ export default function PrimHesaplama() {
       if (job.ilerleme?.toplam) {
         const y = job.ilerleme.yapilan || 0;
         const t = job.ilerleme.toplam;
+        const ad = TIP_ADI[tip] || (tip === "hesap" ? "Prim hesabı" : tip);
+        const asama =
+          job.ilerleme.asama === "esleme"
+            ? "eşleme"
+            : job.ilerleme.asama === "hesap"
+              ? "hesap"
+              : job.ilerleme.asama || "";
         setMesaj({
           tip: "notr",
-          metin: `${TIP_ADI[tip]} işleniyor… ${y.toLocaleString("tr-TR")} / ${t.toLocaleString("tr-TR")}`,
+          metin:
+            tip === "hesap"
+              ? `${ad} işleniyor… (${asama || "devam"})`
+              : `${ad} işleniyor… ${y.toLocaleString("tr-TR")} / ${t.toLocaleString("tr-TR")}`,
         });
       }
     }
@@ -408,11 +431,37 @@ export default function PrimHesaplama() {
   async function primHesapla() {
     if (!tumDosyalarHazir || !acikId) return;
     setHesaplaniyor(true);
-    setMesaj(null);
+    setMesaj({ tip: "notr", metin: "Prim hesaplanıyor, lütfen bekleyin…" });
     try {
       const cevap = await fetch(`/api/hesapla/${acikId}`, { method: "POST" });
-      const veri = await cevap.json();
+      const ham = await cevap.text();
+      let veri = {};
+      try {
+        veri = ham ? JSON.parse(ham) : {};
+      } catch {
+        // Proxy HTML döndürmüş olabilir — dönem durumundan kontrol et
+        await new Promise((r) => setTimeout(r, 3000));
+        const liste = await fetch("/api/donemler").then((r) => r.json()).catch(() => []);
+        const donem = Array.isArray(liste)
+          ? liste.find((d) => Number(d.id) === Number(acikId))
+          : null;
+        if (donem?.durum === "hesaplandi") {
+          setDonemler(liste);
+          setMesaj({ tip: "ok", metin: "Prim hesabı tamamlandı (yanıt gecikti). Rapor açılıyor…" });
+          router.push(`/rapor?donem=${acikId}`);
+          return;
+        }
+        throw new Error(
+          "Hesaplama zaman aşımına uğradı veya sunucu HTML hata döndü. Biraz bekleyip sayfayı yenileyin; sonuç oluşmuş olabilir."
+        );
+      }
       if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Prim hesabı tamamlanamadı");
+
+      if (veri.jobId && veri.durum === "isleniyor") {
+        const { sonuc } = await importSonucBekle(veri.jobId, "hesap");
+        veri = sonuc || {};
+      }
+
       await paneliYukle(acikId);
       setDonemler((liste) =>
         liste.map((item) =>

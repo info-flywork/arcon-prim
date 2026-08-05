@@ -884,13 +884,94 @@ app.get("/api/audit", wrap(async (req, res) => {
 app.post("/api/hesapla/:donemId", wrap(async (req, res) => {
   if (await donemKilitli(Number(req.params.donemId), res)) return;
   const donemId = Number(req.params.donemId);
-  const [[donem]] = await pool.query("SELECT ad FROM donem WHERE id=?", [donemId]);
-  // Hesap öncesi: eksik atamaları tamamla + ürün eşlemelerini güncelle
-  const esleme = await remapPeriod(donemId);
-  const mukerrerMod = req.body?.mukerrer_mod || req.query.mukerrer_mod;
-  const sonuc = await hesapla(donemId, mukerrerMod ? { mukerrerMod } : {});
-  await audit("donem", donemId, "hesap", { donem: donem?.ad, esleme, mukerrerMod: mukerrerMod || null, ...sonuc });
-  res.json({ ...sonuc, esleme });
+  const mukerrerMod = req.body?.mukerrer_mod || req.query.mukerrer_mod || null;
+
+  if (importTipKilitliMi("hesap")) {
+    const sn = Math.round((Date.now() - aktifImportTipleri.get("hesap")) / 1000);
+    return res.status(409).json({
+      hata: `Prim hesabı şu an çalışıyor (${sn} sn). Bitmesini bekleyin.`,
+      kod: "hesap_devam",
+    });
+  }
+
+  const jobId = crypto.randomBytes(8).toString("hex");
+  aktifImportTipleri.set("hesap", Date.now());
+  importJobs.set(jobId, {
+    durum: "isleniyor",
+    tip: "hesap",
+    donemId,
+    baslangic: Date.now(),
+  });
+
+  // Hemen dön — remap+hesap uzun sürebilir, proxy HTML timeout döndürmesin
+  res.json({ jobId, durum: "isleniyor", tip: "hesap" });
+
+  setImmediate(() => {
+    (async () => {
+      try {
+        const [[donem]] = await pool.query("SELECT ad FROM donem WHERE id=?", [donemId]);
+        let esleme;
+        let sonuc;
+        let lastErr;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            importJobs.set(jobId, {
+              ...(importJobs.get(jobId) || {}),
+              durum: "isleniyor",
+              ilerleme: { asama: "esleme", yapilan: 0, toplam: 1 },
+            });
+            esleme = await remapPeriod(donemId);
+            importJobs.set(jobId, {
+              ...(importJobs.get(jobId) || {}),
+              durum: "isleniyor",
+              ilerleme: { asama: "hesap", yapilan: 0, toplam: 1 },
+            });
+            sonuc = await hesapla(donemId, mukerrerMod ? { mukerrerMod } : {});
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+            const lock =
+              e.code === "ER_LOCK_WAIT_TIMEOUT" ||
+              e.errno === 1205 ||
+              e.code === "ER_LOCK_DEADLOCK" ||
+              e.errno === 1213;
+            if (!lock || attempt === 3) throw e;
+            console.warn(`hesap job ${jobId} kilit, yeniden deneme ${attempt + 1}:`, e.message);
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+        if (lastErr) throw lastErr;
+        await audit("donem", donemId, "hesap", {
+          donem: donem?.ad,
+          esleme,
+          mukerrerMod: mukerrerMod || null,
+          ...sonuc,
+        });
+        importJobs.set(jobId, {
+          durum: "bitti",
+          tip: "hesap",
+          donemId,
+          sonuc: { ...sonuc, esleme },
+          baslangic: importJobs.get(jobId)?.baslangic,
+          bitis: Date.now(),
+        });
+      } catch (e) {
+        console.error(`hesap job ${jobId}:`, e);
+        importJobs.set(jobId, {
+          durum: "hata",
+          tip: "hesap",
+          donemId,
+          hata: e.message || String(e),
+          detay: e.detail,
+          baslangic: importJobs.get(jobId)?.baslangic,
+          bitis: Date.now(),
+        });
+      } finally {
+        aktifImportTipleri.delete("hesap");
+      }
+    })();
+  });
 }));
 
 // Dönem kilitle / aç
