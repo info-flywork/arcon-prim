@@ -276,6 +276,38 @@ export default function PrimHesaplama() {
     }
   }
 
+  async function importSonucBekle(jobId, tip) {
+    const baslangic = Date.now();
+    const maxMs = 15 * 60 * 1000;
+    while (Date.now() - baslangic < maxMs) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const cevap = await fetch(`/api/import-job/${jobId}`);
+      const ham = await cevap.text();
+      let job = {};
+      try {
+        job = ham ? JSON.parse(ham) : {};
+      } catch {
+        continue;
+      }
+      if (cevap.status === 404 || job.kod === "job_yok") {
+        // PM2 restart vb. — panelden doğrula
+        const veri = await paneliYukle(acikId);
+        const dosya = DOSYALAR.find((d) => d.tip === tip);
+        const hazir = hazirlikFromDashboard(veri.dashboard);
+        const logVar = (veri.loglar || []).some((log) =>
+          (dosya?.logTipleri || [tip]).includes(log.tip)
+        );
+        if ((dosya?.hazirAnahtar && hazir[dosya.hazirAnahtar]) || logVar) {
+          return { tamamlandi: true, sonuc: { not: "İşlem sunucuda tamamlanmış görünüyor." } };
+        }
+        throw new Error(job.hata || "Yükleme durumu alınamadı. Sayfayı yenileyip kontrol edin.");
+      }
+      if (job.durum === "bitti") return { tamamlandi: true, sonuc: job.sonuc || {} };
+      if (job.durum === "hata") throw new Error(job.hata || "Dosya işlenemedi");
+    }
+    throw new Error("Yükleme çok uzun sürdü. Sayfayı yenileyip sonucu kontrol edin.");
+  }
+
   async function dosyaGonder(tip, file) {
     if (!file || !acikId) return;
     if (yukleniyor) {
@@ -296,6 +328,24 @@ export default function PrimHesaplama() {
       try {
         veri = ham ? JSON.parse(ham) : {};
       } catch {
+        // Proxy kesilmiş olabilir; panelden doğrula
+        const panelVeri = await paneliYukle(acikId);
+        const dosya = DOSYALAR.find((d) => d.tip === tip);
+        const hazir = hazirlikFromDashboard(panelVeri.dashboard);
+        const logVar = (panelVeri.loglar || []).some((log) =>
+          (dosya?.logTipleri || [tip]).includes(log.tip)
+        );
+        if ((dosya?.hazirAnahtar && hazir[dosya.hazirAnahtar]) || logVar) {
+          setSonuclar((onceki) => ({
+            ...onceki,
+            [tip]: { not: "Sunucu yanıtı gecikti ama yükleme tamamlanmış görünüyor." },
+          }));
+          setMesaj({
+            tip: "ok",
+            metin: `${TIP_ADI[tip]} yüklendi (yanıt gecikti, işlem tamamlanmış).`,
+          });
+          return;
+        }
         throw new Error(
           cevap.ok
             ? "Sunucu beklenmeyen yanıt döndü"
@@ -303,10 +353,43 @@ export default function PrimHesaplama() {
         );
       }
       if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Dosya yüklenemedi");
+
+      // Yeni akış: dosya alındı → arka planda işleniyor → poll
+      if (veri.jobId && veri.durum === "isleniyor") {
+        setMesaj({ tip: "notr", metin: `${TIP_ADI[tip]} işleniyor, lütfen bekleyin…` });
+        const { sonuc } = await importSonucBekle(veri.jobId, tip);
+        setSonuclar((onceki) => ({ ...onceki, [tip]: sonuc }));
+        await paneliYukle(acikId);
+        setMesaj({ tip: "ok", metin: `${TIP_ADI[tip]} başarıyla yüklendi.` });
+        return;
+      }
+
+      // Eski senkron yanıt (geriye uyum)
       setSonuclar((onceki) => ({ ...onceki, [tip]: veri }));
       await paneliYukle(acikId);
       setMesaj({ tip: "ok", metin: `${TIP_ADI[tip]} başarıyla yüklendi.` });
     } catch (hata) {
+      try {
+        const panelVeri = await paneliYukle(acikId);
+        const dosya = DOSYALAR.find((d) => d.tip === tip);
+        const hazir = hazirlikFromDashboard(panelVeri.dashboard);
+        const logVar = (panelVeri.loglar || []).some((log) =>
+          (dosya?.logTipleri || [tip]).includes(log.tip)
+        );
+        if ((dosya?.hazirAnahtar && hazir[dosya.hazirAnahtar]) || logVar) {
+          setSonuclar((onceki) => ({
+            ...onceki,
+            [tip]: { not: "İşlem tamamlanmış görünüyor." },
+          }));
+          setMesaj({
+            tip: "ok",
+            metin: `${TIP_ADI[tip]} yüklendi (yanıt gecikti, işlem tamamlanmış).`,
+          });
+          return;
+        }
+      } catch {
+        /* panel kontrolü başarısız — orijinal hatayı göster */
+      }
       setSonuclar((onceki) => ({ ...onceki, [tip]: { hata: hata.message } }));
       setMesaj({ tip: "hata", metin: hata.message });
     } finally {

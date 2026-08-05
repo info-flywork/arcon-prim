@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+const crypto = require("crypto");
 require("dotenv").config();
 
 const pool = require("./db");
@@ -189,16 +190,80 @@ const importers = {
   stok: importStok,
 };
 
+/** Uzun importlar (stok/zeops) proxy timeout yemesin diye arka planda işlenir. */
+const importJobs = new Map();
+
+function importJobTemizle() {
+  const sinir = Date.now() - 60 * 60 * 1000;
+  for (const [id, job] of importJobs) {
+    if ((job.bitis || job.baslangic || 0) < sinir) importJobs.delete(id);
+  }
+}
+
 app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, res) => {
-  const fn = importers[req.params.tip];
+  const tip = req.params.tip;
+  const fn = importers[tip];
   if (!fn) return res.status(400).json({ hata: "Geçersiz import tipi" });
   if (!req.file) return res.status(400).json({ hata: "Dosya yüklenmedi (form alanı: dosya)" });
-  if (await donemKilitli(Number(req.params.donemId), res)) return;
+  const donemId = Number(req.params.donemId);
+  if (await donemKilitli(donemId, res)) return;
   // Multer HTTP başlığından Latin-1 varsayımıyla dosya adını okuyor;
   // Türkçe adları UTF-8 olarak yeniden yorumla (mojibake'i önler)
   const dosyaAdi = Buffer.from(req.file.originalname, "latin1").toString("utf8");
-  const sonuc = await fn(req.file.buffer, Number(req.params.donemId), dosyaAdi);
-  res.json(sonuc);
+  const buffer = req.file.buffer;
+  const jobId = crypto.randomBytes(8).toString("hex");
+
+  importJobTemizle();
+  importJobs.set(jobId, {
+    durum: "isleniyor",
+    tip,
+    donemId,
+    dosyaAdi,
+    baslangic: Date.now(),
+  });
+
+  // Dosya alındı — hemen dön; işlem arka planda sürsün (proxy 30–60sn kesmesin)
+  res.json({ jobId, durum: "isleniyor", tip, dosyaAdi });
+
+  setImmediate(() => {
+    (async () => {
+      try {
+        const sonuc = await fn(buffer, donemId, dosyaAdi);
+        importJobs.set(jobId, {
+          durum: "bitti",
+          tip,
+          donemId,
+          dosyaAdi,
+          sonuc,
+          baslangic: importJobs.get(jobId)?.baslangic,
+          bitis: Date.now(),
+        });
+      } catch (e) {
+        console.error(`import job ${jobId} (${tip}):`, e);
+        importJobs.set(jobId, {
+          durum: "hata",
+          tip,
+          donemId,
+          dosyaAdi,
+          hata: e.message || String(e),
+          detay: e.detail,
+          baslangic: importJobs.get(jobId)?.baslangic,
+          bitis: Date.now(),
+        });
+      }
+    })();
+  });
+}));
+
+app.get("/api/import-job/:jobId", wrap(async (req, res) => {
+  const job = importJobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      hata: "İş bulunamadı (sunucu yeniden başlamış olabilir). Sayfayı yenileyip kontrol edin.",
+      kod: "job_yok",
+    });
+  }
+  res.json(job);
 }));
 
 app.get("/api/import-log/:donemId", wrap(async (req, res) => {
