@@ -229,7 +229,6 @@ export default function Kurallar() {
           </svg>
         </div>
         <div>
-          <span>Hesaplama motoru</span>
           <h2>Prim Kuralları</h2>
           <p>Onaylı kural setini inceleyin, oranları güvenle güncelleyin.</p>
         </div>
