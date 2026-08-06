@@ -25,6 +25,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
   color: var(--metin);
@@ -37,11 +42,16 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
-.layout { display: flex; min-height: 100vh; }
+.layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
 
 /* ============ Sidebar ============ */
 .sidebar {
-  width: 268px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow: hidden;
+  width: 268px; flex-shrink: 0; position: sticky; top: 0; height: 100%; overflow: hidden;
   background:
     radial-gradient(circle at 10% 0, rgba(76, 132, 255, .28), transparent 29%),
     linear-gradient(170deg, #0a1d39 0%, #102e59 53%, #173d72 100%);
@@ -124,7 +134,16 @@ a { color: inherit; text-decoration: none; }
 .sidebar .alt-bilgi span { margin: 0 3px; }
 
 /* ============ İçerik ============ */
-.icerik { flex: 1; padding: 36px 44px; max-width: 1340px; }
+.icerik {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 36px 44px;
+  max-width: 1340px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .icerik h2 {
   font-size: 24px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 6px;
 }
@@ -1516,7 +1535,12 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 }
 
 @media (max-width: 720px) {
-  .layout { display: block; }
+  .layout {
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .sidebar { position: static; width: 100%; height: auto; padding: 14px; }
   .sidebar-marka { padding-bottom: 13px; }
   .sidebar nav { flex-direction: row; overflow-x: auto; padding-bottom: 3px; }
@@ -1524,7 +1548,11 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
   .menu-baslik { display: none; }
   .sidebar nav a { flex: 0 0 auto; min-height: 39px; }
   .sidebar-durum, .sidebar .alt-bilgi { display: none; }
-  .icerik { padding: 20px 14px; }
+  .icerik {
+    padding: 20px 14px;
+    overflow: visible;
+    max-width: none;
+  }
   .prim-hero { align-items: flex-start; flex-direction: column; padding: 24px; }
   .aktif-donem { width: 100%; }
   .ay-panel-baslik { align-items: stretch; flex-direction: column; }
