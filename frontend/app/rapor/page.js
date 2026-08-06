@@ -365,16 +365,7 @@ export default function PrimRaporu() {
       {yukleniyor && <div className="mesaj notr" style={{ marginTop: 12 }}>Yükleniyor...</div>}
       {hata && <div className="mesaj hata" style={{ marginTop: 12 }}>{hata}</div>}
 
-      {gorunum === "toplanmis" && donem && veri && !yukleniyor && !hata && !veri.hesaplandi && (
-        <div className="mesaj hata" style={{ marginTop: 12 }}>
-          Bu dönem için prim özeti yok — hesap tamamlanmamış veya kilit hatasıyla yarıda kalmış.
-          Prim Hesaplama’ya dönüp tekrar «Prim hesapla» çalıştırın.
-          {" "}
-          <Link href={`/yukle?donem=${donem}`}>Hesaplamaya git →</Link>
-        </div>
-      )}
-
-      {gorunum === "toplanmis" && veri?.hesaplandi && veri?.satirlar?.length > 0 && (
+      {gorunum === "toplanmis" && veri?.satirlar?.length > 0 && (
         <ExcelFiltreTablo
           kolonlar={PIVOT_KOLONLAR}
           satirlar={veri.satirlar}
@@ -396,23 +387,14 @@ export default function PrimRaporu() {
         />
       )}
 
-      {gorunum === "toplanmis" && donem && veri && !veri.hesaplandi && !yukleniyor && !hata && (
+      {gorunum === "toplanmis" && donem && veri && !yukleniyor && !hata && !(veri.satirlar || []).some((s) => s.tip === "detay") && (
         <div className="rapor-bos">
           <span>∿</span>
           <h3>Henüz rapor oluşmadı</h3>
-          <p>Toplanmış görünüm `prim_ozet` tablosundan gelir. Hesap başarılı bitmeden burada veri olmaz.</p>
+          <p>Bu dönem için prim sonucu bulunmuyor.</p>
           <Link href={donem ? `/yukle?donem=${donem}` : "/yukle"} className="btn">
             Prim hesaplamaya git →
           </Link>
-        </div>
-      )}
-
-      {gorunum === "satirlar" && satirVeri && !yukleniyor && !satirVeri.hesaplandi && (
-        <div className="mesaj hata" style={{ marginTop: 12 }}>
-          Satır satır Zeops satışlarını gösterir; prim özeti henüz yok (hesap tamamlanmamış).
-          Bu liste «tam prim raporu» değildir — önce Prim hesapla’yı başarıyla bitirin.
-          {" "}
-          <Link href={donem ? `/yukle?donem=${donem}` : "/yukle"}>Hesaplamaya git →</Link>
         </div>
       )}
 
