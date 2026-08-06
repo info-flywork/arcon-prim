@@ -615,7 +615,7 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 
 .dosya-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .dosya-kart {
-  position: relative; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px;
+  position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
   min-height: 94px; padding: 14px; overflow: hidden; border: 1px solid var(--cizgi); border-radius: 16px;
   background: #fbfcfe;
   transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease;
@@ -638,6 +638,9 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
   animation: dosya-nabiz 1.2s ease infinite;
 }
 .dosya-kart > * { position: relative; z-index: 1; }
+.dosya-aksiyon {
+  display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+}
 .dosya-ikon {
   width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px;
   color: var(--prim-mavi); background: #ecfdf5;

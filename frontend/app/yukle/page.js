@@ -612,9 +612,6 @@ export default function PrimHesaplama() {
                     yukleniyor === dosya.tip ? "yukleniyor" : ""
                   }`}
                 >
-                  <div className="dosya-ikon">
-                    <Ikon tip={hazir ? "check" : "upload"} />
-                  </div>
                   <div className="dosya-bilgi">
                     <div>
                       <h4>{dosya.baslik}</h4>
@@ -626,43 +623,48 @@ export default function PrimHesaplama() {
                     </small>
                     {sonuc?.hata && <small className="dosya-hata">{sonuc.hata}</small>}
                   </div>
-                  <label
-                    className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""} ${
-                      yukleniyor && yukleniyor !== dosya.tip ? "kilitli" : ""
-                    }`}
-                    aria-live="polite"
-                    onClick={(event) => {
-                      if (yukleniyor || hesaplaniyor) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setBekletUyari(true);
-                      }
-                    }}
-                  >
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      disabled={
-                        !!yukleniyor ||
-                        hesaplaniyor ||
-                        acikDonem.durum === "kapandi"
-                      }
-                      onChange={(event) => {
-                        dosyaGonder(dosya.tip, event.target.files?.[0]);
-                        event.target.value = "";
+                  <div className="dosya-aksiyon">
+                    <div className="dosya-ikon">
+                      <Ikon tip={hazir ? "check" : "upload"} />
+                    </div>
+                    <label
+                      className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""} ${
+                        yukleniyor && yukleniyor !== dosya.tip ? "kilitli" : ""
+                      }`}
+                      aria-live="polite"
+                      onClick={(event) => {
+                        if (yukleniyor || hesaplaniyor) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setBekletUyari(true);
+                        }
                       }}
-                    />
-                    {yukleniyor === dosya.tip ? (
-                      <>
-                        <span className="yukleme-spinner" />
-                        Yükleniyor…
-                      </>
-                    ) : hazir ? (
-                      "Yenile"
-                    ) : (
-                      "Dosya seç"
-                    )}
-                  </label>
+                    >
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        disabled={
+                          !!yukleniyor ||
+                          hesaplaniyor ||
+                          acikDonem.durum === "kapandi"
+                        }
+                        onChange={(event) => {
+                          dosyaGonder(dosya.tip, event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                      {yukleniyor === dosya.tip ? (
+                        <>
+                          <span className="yukleme-spinner" />
+                          Yükleniyor…
+                        </>
+                      ) : hazir ? (
+                        "Yenile"
+                      ) : (
+                        "Dosya seç"
+                      )}
+                    </label>
+                  </div>
                 </article>
               );
             })}
