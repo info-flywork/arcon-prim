@@ -621,6 +621,9 @@ export default function PrimHesaplama() {
                       <span className="zorunlu">Zorunlu</span>
                     </div>
                     <p>{dosya.kisa}</p>
+                    <small className="dosya-format">
+                      Sadece şu formatlarda dosya gönderebilirsiniz: .xlsx, .xls, .csv
+                    </small>
                     {sonuc?.hata && <small className="dosya-hata">{sonuc.hata}</small>}
                   </div>
                   <label
