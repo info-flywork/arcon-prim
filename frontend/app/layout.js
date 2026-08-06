@@ -9,7 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="tr">
-      <body>
+      <body data-app-shell="1">
         <div className="layout">
           <aside className="sidebar">
             <div className="sidebar-isik sidebar-isik-bir" />
