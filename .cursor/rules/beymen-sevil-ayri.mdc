@@ -1,0 +1,14 @@
+---
+description: Beymen ve Sevil ayrı mağaza/kanal olarak ele alınır
+alwaysApply: true
+---
+
+# Beymen / Sevil ayrımı
+
+- **Beymen** ve **Sevil** birbirinden **ayrı mağaza / alt kanallardır** (`alt_kanal`).
+- Aynı marka grubunda (ör. LP Grubu, DG) yan yana prim sütunu gibi görünseler de **birleştirilmez**, karıştırılmaz.
+- UI başlıkları mağaza adıyla başlar:
+  - örn. `BEYMEN · DG` / `SEVİL · DG` (asla `BEYMEN DG SEVİL` değil)
+  - örn. `BEYMEN · LP GRUBU` / `SEVİL · LP GRUBU`
+- Başlıklarda gereksiz tekrar yok: kanal zaten `BEYMEN` ise `BEYMEN · BEYMEN HERMES` yazılmaz → `BEYMEN · HERMES`.
+- Marka gruplarında markalar parantezli: `(PUIG-HERMES-DG-GIV) SIRALAMA HEDEF`

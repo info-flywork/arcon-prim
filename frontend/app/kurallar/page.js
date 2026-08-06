@@ -20,6 +20,104 @@ function AramaIkon() {
   );
 }
 
+/** "PUIG-HERMES-DG-GIV SIRALAMA HEDEF" → "(PUIG-HERMES-DG-GIV) SIRALAMA HEDEF" */
+function markaParantezle(metin) {
+  const ham = String(metin || "").replace(/\s+/g, " ").trim();
+  if (!ham) return "";
+  if (/\(.*\)/.test(ham)) return ham; // zaten parantezli
+
+  // Marka bloğu + kalan (SIRALAMA HEDEF / HEDEFİ vb.)
+  const eslesme = ham.match(
+    /^([A-Za-zÇĞİÖŞÜçğıöşü0-9]+(?:\s*[-+/&]\s*[A-Za-zÇĞİÖŞÜçğıöşü0-9]+)*)\s+(.+)$/u
+  );
+  if (!eslesme) return ham;
+
+  const markaBlok = eslesme[1].replace(/\s+/g, "").toLocaleUpperCase("tr-TR");
+  const kalan = eslesme[2].trim();
+  const kalanUpper = kalan.toLocaleUpperCase("tr-TR");
+
+  // Sadece hedef/sıralama içeren başlıklarda markayı paranteze al
+  if (!/SIRALAMA|HEDEF/.test(kalanUpper)) return ham;
+
+  return `(${markaBlok}) ${kalan.toLocaleUpperCase("tr-TR")}`;
+}
+
+function kuralKartBaslik({ kanal, bolumAdi, markaGrubuAdi, altKanal }) {
+  const alt = String(altKanal || "").trim().toLocaleUpperCase("tr-TR");
+  const kanalAd = String(kanal || "").trim().toLocaleUpperCase("tr-TR");
+  const bolum = String(bolumAdi || "").trim();
+  const bolumUpper = bolum.toLocaleUpperCase("tr-TR");
+  const kanalUpper = kanalAd;
+
+  // Excel'de yan yana Beymen/Sevil sütunları: isimleri net ayır
+  // Beymen ve Sevil ayrı mağaza — başlık mağaza adıyla başlamalı
+  if (alt === "BEYMEN" || alt === "SEVIL" || alt === "SEVİL") {
+    const yan = alt === "BEYMEN" ? "BEYMEN" : "SEVİL";
+    if (bolumUpper.includes("LP GRUBU")) {
+      return {
+        baslik: `${yan} · LP GRUBU`,
+        altBaslik: `PRİM ÇALIŞMASI (${yan})`,
+      };
+    }
+    if (bolumUpper.includes("BEYMEN DG") || bolumUpper === "BEYMEN DG" || bolumUpper.includes(" DG")) {
+      return {
+        baslik: `${yan} · DG`,
+        altBaslik: `PRİM ÇALIŞMASI (${yan})`,
+      };
+    }
+    const sadeBolum = bolum
+      .replace(/\s*\/\s*SEV[İI]L/gi, "")
+      .replace(/\s*BEYMEN\s*\/\s*/gi, "")
+      .replace(/^BEYMEN\s+/i, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLocaleUpperCase("tr-TR");
+    return {
+      baslik: `${yan} · ${sadeBolum || "GRUP"}`,
+      altBaslik: `PRİM ÇALIŞMASI (${yan})`,
+    };
+  }
+
+  // "BEYMEN · BEYMEN HERMES" → "BEYMEN · HERMES"
+  // "SEPHORA · TEK UZMAN OLAN NOKTALAR SEPHORA" → "SEPHORA · TEK UZMAN OLAN NOKTALAR"
+  let sadeBolum = bolum;
+  if (kanalUpper && bolumUpper.startsWith(kanalUpper + " ")) {
+    sadeBolum = bolum.slice(kanalAd.length).trim();
+  } else if (kanalUpper && bolumUpper === kanalUpper) {
+    sadeBolum = "";
+  }
+  if (kanalUpper && sadeBolum.toLocaleUpperCase("tr-TR").endsWith(" " + kanalUpper)) {
+    sadeBolum = sadeBolum.slice(0, sadeBolum.length - kanalAd.length).trim();
+  } else if (kanalUpper && sadeBolum.toLocaleUpperCase("tr-TR").endsWith(kanalUpper)) {
+    const belki = sadeBolum.slice(0, sadeBolum.length - kanalAd.length).trim();
+    if (belki) sadeBolum = belki;
+  }
+  sadeBolum = sadeBolum.toLocaleUpperCase("tr-TR");
+
+  // Marka grubu bölümle aynıysa tekrar etme; markaları paranteze al
+  const marka = String(markaGrubuAdi || "").trim();
+  const markaGoster =
+    marka &&
+    marka.toLocaleUpperCase("tr-TR") !== bolumUpper &&
+    marka.toLocaleUpperCase("tr-TR") !== sadeBolum
+      ? markaParantezle(marka)
+      : "";
+
+  const parcalar = [kanalAd, sadeBolum, markaGoster].filter(Boolean);
+  const temiz = [];
+  for (const p of parcalar) {
+    const onceki = temiz[temiz.length - 1];
+    if (!onceki || onceki.toLocaleUpperCase("tr-TR") !== p.toLocaleUpperCase("tr-TR")) {
+      temiz.push(p);
+    }
+  }
+
+  return {
+    baslik: temiz.join(" · ") || "Tanımsız bölüm",
+    altBaslik: "Aktif kural seti",
+  };
+}
+
 export default function Kurallar() {
   const [kurallar, setKurallar] = useState([]);
   const [mesaj, setMesaj] = useState(null);
@@ -69,13 +167,31 @@ export default function Kurallar() {
   const gruplar = useMemo(() => {
     const sonuc = new Map();
     for (const kural of filtreli) {
-      const anahtar = `${kural.kanal} · ${kural.bolum_adi}${
-        kural.marka_grubu_adi ? " — " + kural.marka_grubu_adi : ""
-      }`;
-      if (!sonuc.has(anahtar)) sonuc.set(anahtar, []);
-      sonuc.get(anahtar).push(kural);
+      const kanal = String(kural.kanal || "").trim();
+      const bolumAdi = String(kural.bolum_adi || "").trim();
+      const markaGrubuAdi = String(kural.marka_grubu_adi || "").trim();
+      const uzmanTipi = String(kural.uzman_tipi || "").trim();
+      // Excel'deki yan yana sütunlar (Beymen / Sevil) DB'de alt_kanal ile ayrılıyor
+      const altKanal = String(kural.alt_kanal || "").trim();
+
+      const anahtar = [kanal, bolumAdi, markaGrubuAdi, uzmanTipi, altKanal].join("|");
+      if (!sonuc.has(anahtar)) {
+        const { baslik, altBaslik } = kuralKartBaslik({
+          kanal,
+          bolumAdi,
+          markaGrubuAdi,
+          altKanal,
+        });
+        sonuc.set(anahtar, {
+          id: anahtar,
+          baslik,
+          uzmanTipi: altBaslik,
+          liste: [],
+        });
+      }
+      sonuc.get(anahtar).liste.push(kural);
     }
-    return [...sonuc.entries()];
+    return [...sonuc.values()];
   }, [filtreli]);
 
   const bonusSayisi = kurallar.filter((kural) => kural.satir_tipi === "bonus").length;
@@ -83,7 +199,7 @@ export default function Kurallar() {
     const set = new Set(
       kurallar.map(
         (kural) =>
-          `${kural.kanal}|${kural.bolum_adi}|${kural.marka_grubu_adi || ""}`
+          `${kural.kanal}|${kural.bolum_adi}|${kural.marka_grubu_adi || ""}|${kural.alt_kanal || ""}|${kural.uzman_tipi || ""}`
       )
     );
     return set.size;
@@ -207,15 +323,15 @@ export default function Kurallar() {
         </div>
       ) : (
         <div className="kural-gruplar">
-          {gruplar.map(([ad, liste], grupIndex) => (
-            <article className="kural-kart" key={ad} style={{ "--gecikme": `${grupIndex * 25}ms` }}>
+          {gruplar.map((grup, grupIndex) => (
+            <article className="kural-kart" key={grup.id} style={{ "--gecikme": `${grupIndex * 25}ms` }}>
               <header>
-                <div className="kural-kart-simge">{String(ad).charAt(0)}</div>
+                <div className="kural-kart-simge">{String(grup.baslik).charAt(0)}</div>
                 <div>
-                  <h3>{ad}</h3>
-                  <span>{liste.length} kural · Aktif kural seti</span>
+                  <h3>{grup.baslik}</h3>
+                  <span>{grup.uzmanTipi || "Aktif kural seti"}</span>
                 </div>
-                <span className="kural-kart-sayi">{liste.length}</span>
+                <span className="kural-kart-sayi">{grup.liste.length} kural</span>
               </header>
               <div className="kural-tablo-kapsayici">
                 <table className="kural-tablo">
@@ -224,12 +340,10 @@ export default function Kurallar() {
                       <th>Kural</th>
                       <th>Kriter tipi</th>
                       <th className="sag">Oran</th>
-                      <th>Tip</th>
-                      <th>Not</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {liste.map((kural) => (
+                    {grup.liste.map((kural) => (
                       <tr key={kural.id}>
                         <td>
                           <strong className="kural-adi">{kural.kriter_adi}</strong>
@@ -248,12 +362,6 @@ export default function Kurallar() {
                             </svg>
                           </button>
                         </td>
-                        <td>
-                          <span className={`kural-tip kural-tip-${kural.satir_tipi || "standart"}`}>
-                            {TIP_ETIKET[kural.satir_tipi] || kural.satir_tipi || "Kural"}
-                          </span>
-                        </td>
-                        <td><span className="kural-not">{kural.not_metni || "—"}</span></td>
                       </tr>
                     ))}
                   </tbody>

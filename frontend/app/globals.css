@@ -1047,12 +1047,12 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .kural-kart h3 { max-width: 780px; margin-bottom: 3px; font-size: 10.5px; letter-spacing: -.01em; }
 .kural-kart header > div:nth-child(2) > span { color: var(--metin-3); font-size: 8.5px; }
 .kural-kart-sayi {
-  min-width: 27px; height: 27px; display: grid; place-items: center; margin-left: auto;
+  min-width: 58px; height: 27px; display: grid; place-items: center; margin-left: auto;
   border: 1px solid #dce4ef; border-radius: 9px; color: var(--metin-2); background: #fff;
   font-size: 9px; font-weight: 750;
 }
 .kural-tablo-kapsayici { overflow-x: auto; }
-.kural-tablo { min-width: 720px; border: 0; border-radius: 0; box-shadow: none; }
+.kural-tablo { min-width: 560px; border: 0; border-radius: 0; box-shadow: none; }
 .kural-tablo th { padding: 8px 11px; background: #fafbfd; font-size: 7.5px; letter-spacing: .08em; }
 .kural-tablo td { padding: 8px 11px; font-size: 9.5px; }
 .kural-tablo tbody tr:hover td { background: #f5f8ff; }
@@ -1060,20 +1060,26 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .kural-adi { font-size: 9.5px; font-weight: 650; }
 .kriter-tipi, .kural-not { color: var(--metin-2); }
 .kural-not { display: block; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kural-tablo th.sag,
+.kural-tablo td.sag { text-align: right; padding-right: 14px; }
 .kural-oran {
-  display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; min-width: 60px;
-  padding: 5px 7px; border: 1px solid transparent; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  position: relative; margin: 0; padding: 4px 0; border: 0; border-radius: 8px;
   color: var(--kural-mavi); background: transparent; font: inherit; cursor: pointer;
-  transition: color .2s, border-color .2s, background .2s, transform .2s;
+  transition: color .2s, transform .2s;
 }
-.kural-oran strong { font-size: 9.5px; }
+.kural-oran strong {
+  display: inline-block; min-width: 2.6em; text-align: right;
+  font-size: 9.5px; font-variant-numeric: tabular-nums;
+}
 .kural-oran svg {
-  width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: translateX(-3px);
-  transition: opacity .2s, transform .2s;
+  position: absolute; right: calc(100% + 4px); top: 50%; width: 11px; height: 11px; margin-top: -5.5px;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0; pointer-events: none;
+  transition: opacity .2s;
 }
-.kural-oran:hover { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--kural-mavi), var(--kural-mor)); transform: translateY(-1px); }
-.kural-oran:hover svg { opacity: 1; transform: none; }
+.kural-oran:hover { color: var(--kural-mor); transform: translateY(-1px); }
+.kural-oran:hover svg { opacity: 1; }
 .kural-tip {
   display: inline-flex; padding: 3px 7px; border-radius: 999px;
   color: #637187; background: #eef2f7; font-size: 7.5px; font-weight: 750; white-space: nowrap;

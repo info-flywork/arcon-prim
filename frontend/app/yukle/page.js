@@ -190,11 +190,16 @@ export default function PrimHesaplama() {
     const maxDonemYil = donemler.length
       ? Math.max(...donemler.map((d) => Number(d.yil)))
       : simdiYil;
-    const baslangic = Math.max(maxDonemYil + 1, simdiYil + 1);
+    // Mevcut yılı her zaman seçeneklere dahil et (ör. 2026)
+    const baslangic = Math.min(simdiYil, maxDonemYil + 1);
     return Array.from({ length: 5 }, (_, i) => baslangic + i);
   }, [donemler]);
 
-  const aktifYeniYil = seciliYeniYil || yilSecenekleri[0] || new Date().getFullYear() + 1;
+  const varsayilanYil = new Date().getFullYear();
+  const aktifYeniYil =
+    seciliYeniYil ||
+    (yilSecenekleri.includes(varsayilanYil) ? varsayilanYil : yilSecenekleri[0]) ||
+    varsayilanYil;
 
   async function yeniYilDonemiAc(hedefYil = aktifYeniYil) {
     if (yeniYilYukleniyor || yukleniyor || hesaplaniyor) return;

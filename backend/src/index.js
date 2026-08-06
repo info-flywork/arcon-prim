@@ -26,7 +26,7 @@ app.use(express.json());
 
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => {
   console.error(e);
-  res.status(e.status || 500).json({ hata: e.message, detay: e.detail });
+  res.status(e.status || 500).json({ hata: e.message || "Sunucu hatası", detay: e.detail });
 });
 
 // Değişiklik izi — her mutasyon kaydedilir
