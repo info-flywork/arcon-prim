@@ -5,12 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 const oranYaz = (deger) =>
   Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 
-const TIP_ETIKET = {
-  kural: "Standart kural",
-  grup_toplam: "Grup toplamı",
-  bonus: "Bonus",
-};
-
 function AramaIkon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -122,7 +116,6 @@ export default function Kurallar() {
   const [kurallar, setKurallar] = useState([]);
   const [mesaj, setMesaj] = useState(null);
   const [arama, setArama] = useState("");
-  const [tip, setTip] = useState("tumu");
   const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenlenen, setDuzenlenen] = useState(null);
   const [yeniOran, setYeniOran] = useState("");
@@ -143,26 +136,21 @@ export default function Kurallar() {
     yukle();
   }, []);
 
-  const tipler = useMemo(
-    () => [...new Set(kurallar.map((kural) => kural.satir_tipi).filter(Boolean))],
-    [kurallar]
-  );
-
   const filtreli = useMemo(() => {
     const sorgu = arama.trim().toLocaleLowerCase("tr-TR");
     return kurallar.filter((kural) => {
-      if (tip !== "tumu" && kural.satir_tipi !== tip) return false;
       if (!sorgu) return true;
       return [
         kural.kanal,
         kural.bolum_adi,
         kural.marka_grubu_adi,
+        kural.alt_kanal,
         kural.kriter_adi,
         kural.kriter_tipi,
         kural.not_metni,
       ].some((alan) => String(alan || "").toLocaleLowerCase("tr-TR").includes(sorgu));
     });
-  }, [arama, kurallar, tip]);
+  }, [arama, kurallar]);
 
   const gruplar = useMemo(() => {
     const sonuc = new Map();
@@ -193,17 +181,6 @@ export default function Kurallar() {
     }
     return [...sonuc.values()];
   }, [filtreli]);
-
-  const bonusSayisi = kurallar.filter((kural) => kural.satir_tipi === "bonus").length;
-  const grupSayisi = useMemo(() => {
-    const set = new Set(
-      kurallar.map(
-        (kural) =>
-          `${kural.kanal}|${kural.bolum_adi}|${kural.marka_grubu_adi || ""}|${kural.alt_kanal || ""}|${kural.uzman_tipi || ""}`
-      )
-    );
-    return set.size;
-  }, [kurallar]);
 
   function duzenlemeAc(kural) {
     setMesaj(null);
@@ -256,26 +233,7 @@ export default function Kurallar() {
           <h2>Prim Kuralları</h2>
           <p>Onaylı kural setini inceleyin, oranları güvenle güncelleyin.</p>
         </div>
-        <div className="kural-hero-durum">
-          <i />
-          <span><strong>Kurallar aktif</strong><small>Hesaplamalarda kullanılıyor</small></span>
-        </div>
       </section>
-
-      <div className="kural-istatistikler">
-        <div>
-          <span className="kural-istat-ikon mavi">#</span>
-          <span><small>Toplam kural</small><strong>{kurallar.length}</strong></span>
-        </div>
-        <div>
-          <span className="kural-istat-ikon mor">G</span>
-          <span><small>Kural grubu</small><strong>{grupSayisi}</strong></span>
-        </div>
-        <div>
-          <span className="kural-istat-ikon turkuaz">+</span>
-          <span><small>Bonus kuralı</small><strong>{bonusSayisi}</strong></span>
-        </div>
-      </div>
 
       <div className="kural-araclar">
         <div className="kural-arama">
@@ -288,21 +246,6 @@ export default function Kurallar() {
           />
           {arama && <button onClick={() => setArama("")} aria-label="Aramayı temizle">×</button>}
         </div>
-        <div className="kural-tipler">
-          <button className={tip === "tumu" ? "aktif" : ""} onClick={() => setTip("tumu")}>
-            Tümü
-          </button>
-          {tipler.map((kuralTipi) => (
-            <button
-              key={kuralTipi}
-              className={tip === kuralTipi ? "aktif" : ""}
-              onClick={() => setTip(kuralTipi)}
-            >
-              {TIP_ETIKET[kuralTipi] || kuralTipi}
-            </button>
-          ))}
-        </div>
-        <span className="kural-sonuc">{filtreli.length} kural</span>
       </div>
 
       {mesaj && (
@@ -319,7 +262,7 @@ export default function Kurallar() {
         <div className="kural-bos">
           <span><AramaIkon /></span>
           <h3>Eşleşen kural bulunamadı</h3>
-          <p>Arama metnini veya seçili filtreyi değiştirin.</p>
+          <p>Arama metnini değiştirip tekrar deneyin.</p>
         </div>
       ) : (
         <div className="kural-gruplar">
@@ -329,9 +272,7 @@ export default function Kurallar() {
                 <div className="kural-kart-simge">{String(grup.baslik).charAt(0)}</div>
                 <div>
                   <h3>{grup.baslik}</h3>
-                  <span>{grup.uzmanTipi || "Aktif kural seti"}</span>
                 </div>
-                <span className="kural-kart-sayi">{grup.liste.length} kural</span>
               </header>
               <div className="kural-tablo-kapsayici">
                 <table className="kural-tablo">
@@ -344,11 +285,16 @@ export default function Kurallar() {
                   </thead>
                   <tbody>
                     {grup.liste.map((kural) => (
-                      <tr key={kural.id}>
+                      <tr
+                        key={kural.id}
+                        className={kural.satir_tipi === "grup_toplam" ? "kural-satir-toplam" : undefined}
+                      >
                         <td>
                           <strong className="kural-adi">{kural.kriter_adi}</strong>
                         </td>
-                        <td><span className="kriter-tipi">{kural.kriter_tipi || "—"}</span></td>
+                        <td>
+                          <span className="kriter-tipi">{kural.kriter_tipi || "—"}</span>
+                        </td>
                         <td className="sag">
                           <button
                             type="button"

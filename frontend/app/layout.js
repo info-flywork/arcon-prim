@@ -22,13 +22,6 @@ export default function RootLayout({ children }) {
               </span>
             </div>
             <Menu />
-            <div className="sidebar-durum">
-              <span className="durum-nokta" />
-              <span>
-                <strong>Sistem hazır</strong>
-                <small>Verileriniz güvende</small>
-              </span>
-            </div>
             <div className="alt-bilgi">Arcon Prim <span>·</span> v1.0</div>
           </aside>
           <main className="icerik">{children}</main>
