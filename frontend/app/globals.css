@@ -1161,9 +1161,12 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 
 /* ============ Rapor merkezi ============ */
 .rapor-sayfa {
-  --rapor-mor: #7257f0;
-  --rapor-mavi: #2f80ed;
-  --rapor-turkuaz: #16b8c5;
+  --rapor-mor: #047857;
+  --rapor-mavi: #10b981;
+  --rapor-turkuaz: #34d399;
+  --vurgu: #10b981;
+  --vurgu-koyu: #047857;
+  --vurgu-acik: #ecfdf5;
   width: min(1120px, 100%); margin-inline: auto; padding-bottom: 50px;
   animation: prim-sayfa-giris .42s ease both;
 }
@@ -1174,8 +1177,8 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
   box-shadow: var(--golge); transition: color .2s, border-color .2s, background .2s, transform .2s;
 }
 .rapor-geri:hover {
-  color: var(--rapor-mavi); border-color: rgba(47,128,237,.35);
-  background: #f5f9ff; transform: translateX(-2px);
+  color: #047857; border-color: rgba(16,185,129,.35);
+  background: #ecfdf5; transform: translateX(-2px);
 }
 .rapor-toggle {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px;
@@ -1189,13 +1192,13 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 }
 .rapor-toggle a::before {
   content: ""; position: absolute; inset: 0; opacity: 0;
-  background: linear-gradient(120deg, rgba(47,128,237,.08), rgba(114,87,240,.08));
+  background: linear-gradient(120deg, rgba(16,185,129,.1), rgba(4,120,87,.08));
   transition: opacity .22s;
 }
 .rapor-toggle a:hover { color: var(--metin); transform: translateY(-1px); }
 .rapor-toggle a:hover::before { opacity: 1; }
 .rapor-toggle a.aktif {
-  color: var(--metin); border-color: rgba(47,128,237,.13); background: #fff;
+  color: var(--metin); border-color: rgba(16,185,129,.2); background: #fff;
   box-shadow: 0 7px 22px -16px rgba(15,28,46,.65);
 }
 .rapor-toggle a.aktif::after {
@@ -1214,7 +1217,7 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 }
 .rapor-toggle a.aktif .rapor-toggle-ikon {
   color: #fff; background: linear-gradient(135deg, var(--rapor-mavi), var(--rapor-mor));
-  box-shadow: 0 6px 15px -6px rgba(71,91,226,.7);
+  box-shadow: 0 6px 15px -6px rgba(16,185,129,.55);
 }
 .rapor-toggle strong, .rapor-toggle small { display: block; }
 .rapor-toggle strong { margin-bottom: 2px; font-size: 11.5px; }
@@ -1225,22 +1228,32 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .rapor-hero {
   position: relative; display: flex; align-items: center; gap: 18px; min-height: 137px;
   padding: 25px 28px; margin-bottom: 14px; overflow: hidden; border-radius: 21px; color: #fff;
-  box-shadow: 0 18px 42px -30px rgba(27,53,105,.9);
+  box-shadow: 0 20px 44px -31px rgba(4, 40, 28, .85);
 }
 .rapor-hero::before {
   content: ""; position: absolute; width: 230px; height: 230px; right: -90px; top: -135px;
-  border: 35px solid rgba(255,255,255,.075); border-radius: 50%;
+  border: 35px solid rgba(52, 211, 153, .1); border-radius: 50%;
 }
 .rapor-hero::after {
   content: ""; position: absolute; width: 100px; height: 100px; right: 80px; bottom: -85px;
-  border: 22px solid rgba(255,255,255,.055); border-radius: 50%;
+  border: 22px solid rgba(16, 185, 129, .08); border-radius: 50%;
 }
-.rapor-hero-satis { background: linear-gradient(118deg, #122b52, #2857a0 55%, #2f80ed); }
-.rapor-hero-genel { background: linear-gradient(118deg, #24275a, #4a48a7 55%, #7257f0); }
+.rapor-hero-satis {
+  background:
+    radial-gradient(ellipse 90% 80% at 0% 0%, rgba(16, 185, 129, .42), transparent 48%),
+    radial-gradient(circle at 85% 10%, rgba(255,255,255,.1), transparent 22%),
+    linear-gradient(118deg, #07150f 0%, #0c241a 48%, #065f46 100%);
+}
+.rapor-hero-genel {
+  background:
+    radial-gradient(ellipse 90% 80% at 0% 0%, rgba(16, 185, 129, .42), transparent 48%),
+    radial-gradient(circle at 85% 10%, rgba(255,255,255,.1), transparent 22%),
+    linear-gradient(118deg, #07150f 0%, #0c241a 48%, #065f46 100%);
+}
 .rapor-hero > * { position: relative; z-index: 1; }
 .rapor-hero-ikon {
   width: 53px; height: 53px; flex: 0 0 53px; display: grid; place-items: center;
-  border: 1px solid rgba(255,255,255,.17); border-radius: 16px; background: rgba(255,255,255,.11);
+  border: 1px solid rgba(167, 243, 208, .22); border-radius: 16px; background: rgba(16, 185, 129, .16);
   box-shadow: inset 0 1px rgba(255,255,255,.12); backdrop-filter: blur(10px);
 }
 .rapor-hero-ikon svg {
@@ -1248,21 +1261,29 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
   stroke-linecap: round; stroke-linejoin: round;
 }
 .rapor-kicker {
-  display: inline-block; margin-bottom: 5px; color: #9fe4ff;
+  display: inline-block; margin-bottom: 5px; color: #a7f3d0;
   font-size: 8.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
 }
 .rapor-hero h2 { margin: 0 0 5px; color: #fff; font-size: 26px; }
 .rapor-hero p { max-width: 690px; color: rgba(255,255,255,.65); font-size: 11.5px; line-height: 1.55; }
 
 .rapor-araclar {
-  display: flex; align-items: center; justify-content: space-between; gap: 15px;
-  padding: 13px 15px; margin-bottom: 13px; border: 1px solid var(--cizgi); border-radius: 15px;
-  background: rgba(255,255,255,.82); box-shadow: var(--golge);
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+  padding: 14px 16px; margin-bottom: 13px; border: 1px solid var(--cizgi); border-radius: 15px;
+  background: rgba(255,255,255,.9); box-shadow: var(--golge);
 }
+.rapor-araclar .donem-secici { width: 100%; }
+.rapor-sayfa .donem-kutular { gap: 10px; padding: 2px 0 4px; }
+.rapor-sayfa .donem-kutular button { min-width: 132px; }
 .rapor-araclar .satir { margin: 0; }
 .rapor-araclar label { font-size: 10.5px; }
 .rapor-araclar select { min-width: 190px !important; padding: 8px 11px; font-size: 11.5px; }
-.rapor-indir { padding: 8px 13px; font-size: 10.5px; background-image: linear-gradient(110deg, var(--rapor-mavi), var(--rapor-mor)); background-size: 180% 180%; }
+.rapor-indir {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 9px 14px; font-size: 11px;
+  background-image: linear-gradient(110deg, var(--rapor-mavi), var(--rapor-mor));
+  background-size: 180% 180%;
+}
 .rapor-indir:hover { background-position: 100% 50%; }
 .rapor-indir > span { font-size: 14px; }
 
@@ -1279,23 +1300,27 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 .rapor-sekme button + button { border-left: 1px solid var(--cizgi); }
 .rapor-sekme button.aktif {
   color: #fff;
-  background: linear-gradient(110deg, var(--rapor-mavi), var(--rapor-mor));
+  background: linear-gradient(110deg, #10b981, #047857);
 }
 .rapor-kaynak-not {
   margin: 0; color: var(--metin-2); font-size: 11.5px; line-height: 1.4;
 }
 .prim-calisma-araclar {
   display: flex; flex-direction: column; gap: 10px; width: 100%;
+  padding-top: 4px; border-top: 1px solid var(--cizgi);
 }
 .prim-calisma-filtre {
-  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
 }
 .prim-calisma-filtre input,
 .prim-calisma-filtre select {
-  min-height: 34px; padding: 6px 10px; border: 1px solid var(--cizgi);
-  border-radius: 8px; font-size: 12px; background: #fff;
+  min-height: 36px; padding: 7px 11px; border: 1px solid var(--cizgi);
+  border-radius: 9px; font-size: 12px; background: #fff;
 }
-.prim-calisma-filtre input { min-width: 220px; flex: 1; }
+.prim-calisma-filtre input { min-width: 200px; flex: 1 1 200px; }
+.prim-calisma-filtre select { flex: 0 1 180px; }
+.prim-calisma-filtre .btn.ikincil { flex: 0 0 auto; }
+.prim-calisma-filtre .rapor-indir { margin-left: auto; }
 .prim-calisma-pager {
   display: flex; align-items: center; justify-content: center; gap: 14px;
   margin: 14px 0 8px; font-size: 12px; font-weight: 700; color: var(--metin-2);
@@ -1329,7 +1354,7 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 }
 .excel-filtre-btn:hover { background: #fff; }
 .excel-filtre-btn.aktif {
-  background: #1a73e8; border-color: #1a73e8; color: #fff;
+  background: #047857; border-color: #047857; color: #fff;
 }
 .excel-topla-btn {
   flex: 0 0 auto; display: inline-grid; place-items: center;
