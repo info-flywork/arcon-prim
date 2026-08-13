@@ -96,6 +96,7 @@ export default function PrimHesaplama() {
   const [panel, setPanel] = useState({});
   const [yukleniyor, setYukleniyor] = useState(null);
   const [hesaplaniyor, setHesaplaniyor] = useState(false);
+  const [hesapIlerleme, setHesapIlerleme] = useState(null);
   const [sonuclar, setSonuclar] = useState({});
   const [mesaj, setMesaj] = useState(null);
   const [sayfaYukleniyor, setSayfaYukleniyor] = useState(true);
@@ -327,6 +328,9 @@ export default function PrimHesaplama() {
       }
       if (job.durum === "bitti") return { tamamlandi: true, sonuc: job.sonuc || {} };
       if (job.durum === "hata") throw new Error(job.hata || "Dosya işlenemedi");
+      if (tip === "hesap") {
+        setHesapIlerleme(job.ilerleme || { asama: "devam" });
+      }
       if (job.ilerleme?.toplam) {
         const y = job.ilerleme.yapilan || 0;
         const t = job.ilerleme.toplam;
@@ -443,6 +447,7 @@ export default function PrimHesaplama() {
   async function primHesapla() {
     if (!tumDosyalarHazir || !acikId) return;
     setHesaplaniyor(true);
+    setHesapIlerleme({ asama: "basliyor" });
     setMesaj({ tip: "notr", metin: "Prim hesaplanıyor, lütfen bekleyin…" });
     try {
       const cevap = await fetch(`/api/hesapla/${acikId}`, { method: "POST" });
@@ -490,6 +495,7 @@ export default function PrimHesaplama() {
     } catch (hata) {
       setMesaj({ tip: "hata", metin: hata.message });
       setHesaplaniyor(false);
+      setHesapIlerleme(null);
     }
   }
 
@@ -747,6 +753,28 @@ export default function PrimHesaplama() {
                 </Link>
               )}
             </div>
+            {hesaplaniyor && (
+              <div className="hesap-progress-kutu">
+                <div className="hesap-progress-metin">
+                  {hesapIlerleme?.asama === "esleme"
+                    ? "Satış eşlemesi yapılıyor…"
+                    : hesapIlerleme?.asama === "hesap"
+                      ? "Prim satırları hesaplanıyor…"
+                      : "Prim hesabı başlatıldı, lütfen bekleyin…"}
+                </div>
+                <div className="rapor-progress" aria-label="Hesaplama ilerleme">
+                  <i
+                    style={{
+                      width:
+                        hesapIlerleme?.toplam > 1
+                          ? `${Math.min(100, Math.round((Number(hesapIlerleme.yapilan || 0) / Number(hesapIlerleme.toplam)) * 100))}%`
+                          : undefined,
+                      animation: !(hesapIlerleme?.toplam > 1) ? "rapor-progress-kay 1.2s ease infinite" : undefined,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -830,6 +858,9 @@ export default function PrimHesaplama() {
                 <>
                   Sabrınız için teşekkür ederiz. Şu anda prim hesabı devam etmektedir.
                   Lütfen işlemin tamamlanmasını bekleyiniz.
+                  <span className="rapor-progress" style={{ marginTop: 12, display: "block" }}>
+                    <i style={{ animation: "rapor-progress-kay 1.2s ease infinite" }} />
+                  </span>
                 </>
               ) : (
                 <>

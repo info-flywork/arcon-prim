@@ -135,6 +135,7 @@ export default function PrimRaporu() {
   const [kolonFiltre, setKolonFiltre] = useState({});
   const [acilacakKolon, setAcilacakKolon] = useState(null);
   const [acilacakAra, setAcilacakAra] = useState("");
+  const [hesapDurum, setHesapDurum] = useState(null);
 
   useEffect(() => {
     if (gorunum !== "toplanmis" || !donem) return;
@@ -145,6 +146,7 @@ export default function PrimRaporu() {
         const d = await r.json();
         if (!r.ok) throw new Error(d.hata || "Pivot yüklenemedi");
         setVeri(d);
+        setHesapDurum(d.hesap_durum || null);
         setYukleniyor(false);
       })
       .catch((e) => {
@@ -187,6 +189,34 @@ export default function PrimRaporu() {
       ac.abort();
     };
   }, [gorunum, donem, sayfa, arama, aciklama, kolonFiltre]);
+
+  const detayVar = (veri?.satirlar || []).some((s) => s.tip === "detay");
+
+  useEffect(() => {
+    if (!donem || detayVar) return;
+    let iptal = false;
+    async function kontrol() {
+      try {
+        const r = await fetch(`/api/hesap-durum/${donem}`);
+        const d = await r.json();
+        if (iptal) return;
+        setHesapDurum(d.job || (d.hesaplaniyor ? { durum: "isleniyor" } : null));
+        if (d.hesaplaniyor) return;
+        if (gorunum === "toplanmis") {
+          const rapor = await fetch(`/api/prim-raporu/${donem}`).then((x) => x.json());
+          if (!iptal) setVeri(rapor);
+        }
+      } catch {
+        /* yok say */
+      }
+    }
+    const t = setInterval(kontrol, 2000);
+    kontrol();
+    return () => {
+      iptal = true;
+      clearInterval(t);
+    };
+  }, [donem, detayVar, gorunum]);
 
   function hucreDeger(satir, kolon) {
     if (kolon.tip === "metin") return satir[kolon.key] || "";
@@ -387,14 +417,41 @@ export default function PrimRaporu() {
         />
       )}
 
-      {gorunum === "toplanmis" && donem && veri && !yukleniyor && !hata && !(veri.satirlar || []).some((s) => s.tip === "detay") && (
+      {gorunum === "toplanmis" && donem && veri && !yukleniyor && !hata && !detayVar && (
         <div className="rapor-bos">
-          <span>∿</span>
-          <h3>Henüz rapor oluşmadı</h3>
-          <p>Bu dönem için prim sonucu bulunmuyor.</p>
-          <Link href={donem ? `/yukle?donem=${donem}` : "/yukle"} className="btn">
-            Prim hesaplamaya git →
-          </Link>
+          {hesapDurum?.durum === "isleniyor" ? (
+            <>
+              <span className="rapor-progress-spin" />
+              <h3>Prim hesaplanıyor</h3>
+              <p>
+                {hesapDurum.ilerleme?.asama === "esleme"
+                  ? "Satış eşlemesi yapılıyor…"
+                  : hesapDurum.ilerleme?.asama === "hesap"
+                    ? "Prim satırları hesaplanıyor…"
+                    : "Hesap devam ediyor, lütfen bekleyin."}
+                {hesapDurum.sn ? ` (${hesapDurum.sn} sn)` : ""}
+              </p>
+              <div className="rapor-progress" aria-label="Hesaplama ilerleme">
+                <i
+                  style={{
+                    width: hesapDurum.ilerleme?.toplam > 1
+                      ? `${Math.min(100, Math.round((Number(hesapDurum.ilerleme.yapilan || 0) / Number(hesapDurum.ilerleme.toplam)) * 100))}%`
+                      : undefined,
+                    animation: !(hesapDurum.ilerleme?.toplam > 1) ? "rapor-progress-kay 1.2s ease infinite" : undefined,
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <span>∿</span>
+              <h3>Henüz rapor oluşmadı</h3>
+              <p>Bu dönem için prim sonucu bulunmuyor.</p>
+              <Link href={donem ? `/yukle?donem=${donem}` : "/yukle"} className="btn">
+                Prim hesaplamaya git →
+              </Link>
+            </>
+          )}
         </div>
       )}
 
@@ -461,12 +518,25 @@ export default function PrimRaporu() {
 
       {gorunum === "satirlar" && donem && satirVeri && satirVeri.satirlar.length === 0 && !yukleniyor && !hata && (
         <div className="rapor-bos">
-          <h3>Satır bulunamadı</h3>
-          <p>
-            {satirVeri.toplam === 0 && !arama && !aciklama && !filtreAktifMi(kolonFiltre)
-              ? "Bu dönemde beyan/hesap satırı yok. Önce dosya yükleyip hesaplayın."
-              : "Filtreyi temizleyip tekrar deneyin."}
-          </p>
+          {hesapDurum?.durum === "isleniyor" ? (
+            <>
+              <span className="rapor-progress-spin" />
+              <h3>Prim hesaplanıyor</h3>
+              <p>Satır satır rapor hesap bitince dolacak.</p>
+              <div className="rapor-progress" aria-label="Hesaplama ilerleme">
+                <i style={{ animation: "rapor-progress-kay 1.2s ease infinite" }} />
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>Satır bulunamadı</h3>
+              <p>
+                {satirVeri.toplam === 0 && !arama && !aciklama && !filtreAktifMi(kolonFiltre)
+                  ? "Bu dönemde beyan/hesap satırı yok. Önce dosya yükleyip hesaplayın."
+                  : "Filtreyi temizleyip tekrar deneyin."}
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

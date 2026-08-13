@@ -310,6 +310,31 @@ app.post("/api/import-kilit-ac/:tip", wrap(async (req, res) => {
   res.json(await importKilitAc(req.params.tip || "stok"));
 }));
 
+function aktifHesapJob(donemId) {
+  const idNum = Number(donemId);
+  for (const [id, job] of importJobs) {
+    if (job.tip === "hesap" && job.durum === "isleniyor" && Number(job.donemId) === idNum) {
+      return {
+        jobId: id,
+        durum: "isleniyor",
+        ilerleme: job.ilerleme || null,
+        sn: Math.max(0, Math.round((Date.now() - (job.baslangic || Date.now())) / 1000)),
+      };
+    }
+  }
+  return null;
+}
+
+app.get("/api/hesap-durum/:donemId", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  const job = aktifHesapJob(donemId);
+  res.json({
+    donem_id: donemId,
+    hesaplaniyor: !!job,
+    job,
+  });
+}));
+
 app.get("/api/import-job/:jobId", wrap(async (req, res) => {
   const job = importJobs.get(req.params.jobId);
   if (!job) {
@@ -1622,7 +1647,7 @@ async function primRaporuVerisi(donemId) {
 
 app.get("/api/prim-raporu/:donemId", wrap(async (req, res) => {
   const veri = await primRaporuVerisi(req.params.donemId);
-  res.json(veri);
+  res.json({ ...veri, hesap_durum: aktifHesapJob(req.params.donemId) });
 }));
 
 // ---------- Satır satır Prim Çalışma (sistem hesabı, dönem bazlı) ----------

@@ -106,7 +106,10 @@ const PROFILLER = {
   },
   "uzman-magaza": {
     ad: "Uzman-Mağaza-Grup",
-    zorunlu: [["PRİM MAĞAZA", "PRIM MAGAZA"], ["Uzman Ad-Soyad", "Uzman Ad-Sıyad", "UZMAN"], ["BAYİ", "BAYI"]],
+    zorunlu: [
+      ["PRİM MAĞAZA", "PRIM MAGAZA", "Sell-Out Mağaza", "Sell Out Mağaza", "SELL-OUT MAĞAZA"],
+      ["Uzman Ad-Soyad", "Uzman Ad-Sıyad", "Uzman Ad-Soy ad", "UZMAN"],
+    ],
   },
   stok: {
     ad: "Stok Liste",
@@ -160,6 +163,66 @@ async function loadStoreMaps(conn) {
 async function loadUzmanMap(conn) {
   const [rows] = await conn.query("SELECT id, normal_ad FROM uzman");
   return new Map(rows.map((r) => [r.normal_ad, r.id]));
+}
+
+function magazaKolonuAl(row) {
+  const v = pick(
+    row,
+    "PRİM MAĞAZA", "PRIM MAGAZA", "Prim Mağaza",
+    "Sell-Out Mağaza", "Sell Out Mağaza", "SELL-OUT MAĞAZA", "Sell-out Mağaza"
+  );
+  return v == null || String(v).trim() === "" ? "" : String(v).trim();
+}
+
+function uzmanKolonuAl(row) {
+  const v = pick(row, "Uzman Ad-Soyad", "Uzman Ad-Sıyad", "Uzman Ad-Soy ad", "UZMAN", "Uzman");
+  return v == null || String(v).trim() === "" ? "" : String(v).trim();
+}
+
+function grupKolonuAl(row) {
+  return String(pick(row, "Group", "GRUP", "Prim Grup", "PRIM GRUP", "Marka Grup") || "").trim();
+}
+
+function toplamSatirMi(magaza) {
+  const n = normalizeName(magaza);
+  return !!n && (n === "GENEL TOPLAM" || n.endsWith(" TOPLAM"));
+}
+
+function bayiTahminEt(magazaAdi, bayiHam, mevcutBayi) {
+  const b = String(bayiHam || "").trim().toLocaleUpperCase("tr-TR");
+  if (b && b !== "?") return b;
+  const m = String(magazaAdi || "").toLocaleUpperCase("tr-TR");
+  if (m.includes("SEPHORA")) return "SEPHORA";
+  if (m.includes("BOYNER")) return "BOYNER";
+  if (m.includes("SEVİL") || m.includes("SEVIL")) return "SEVIL";
+  if (m.includes("BEYMEN")) return "BEYMEN";
+  if (m.includes("YKM")) return "YKM";
+  if (mevcutBayi) return String(mevcutBayi).trim().toLocaleUpperCase("tr-TR");
+  return "";
+}
+
+/** Klasik master + Sell-Out Mağaza / Prim Grup pivot (Toplam satırları + boş mağaza taşır). */
+function uzmanMagazaSatirlariniAc(rows) {
+  const out = [];
+  let sonMagaza = "";
+  for (const row of rows) {
+    const magHam = magazaKolonuAl(row);
+    if (magHam && toplamSatirMi(magHam)) continue;
+    if (magHam) sonMagaza = magHam;
+    const magaza = magHam || sonMagaza;
+    const uzmanAd = uzmanKolonuAl(row);
+    if (!magaza || !uzmanAd || toplamSatirMi(magaza)) continue;
+    out.push({
+      magaza,
+      uzmanAd,
+      grup: grupKolonuAl(row),
+      bayiHam: pick(row, "BAYİ", "BAYI"),
+      magazaAdi: String(pick(row, "MAĞAZA", "MAGAZA") || magaza).trim(),
+      magazaKodu: pick(row, "MAĞAZA KODU", "MAGAZA KODU") || null,
+      sehir: pick(row, "ŞEHİR", "SEHIR") || null,
+    });
+  }
+  return out;
 }
 
 async function loadLegacyRepresentatives(conn) {
@@ -266,20 +329,26 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
 }
 
 // ---- 5. Uzman-Mağaza-Grup (master) ---------------------------------------
-// Beklenen kolonlar: ŞEHİR, MAĞAZA KODU, BAYİ, MAĞAZA, PRİM MAĞAZA, Uzman Ad-Soyad, Group
+// Klasik: ŞEHİR, MAĞAZA KODU, BAYİ, MAĞAZA, PRİM MAĞAZA, Uzman Ad-Soyad, Group
+// Kısa pivot: Sell-Out Mağaza, Uzman Ad-Soy ad, Prim Grup (Toplam satırları atlanır)
 async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
   const rows = readSheet(
     buffer,
-    ["PRİM MAĞAZA", "BAYİ", "Uzman Ad-Sıyad", "Group"],
+    ["PRİM MAĞAZA", "BAYİ", "Uzman Ad-Sıyad", "Group", "Sell-Out Mağaza", "Uzman Ad-Soy ad", "Prim Grup"],
     ["Uzman-Mağaza-Grup"]
   );
   const formatHata = formatKontrol(rows, "uzman-magaza");
   if (formatHata) return formatHata;
+  const acikSatirlar = uzmanMagazaSatirlariniAc(rows);
+  if (!acikSatirlar.length) {
+    return { hata: "Uzman-mağaza satırı bulunamadı. Toplam satırları veya boş satırlar atlandı. Veri kaydedilmedi." };
+  }
   const conn = await pool.getConnection();
   let ok = 0, err = 0;
   const yeniUzmanSet = new Set();
   const yeniMagazaSet = new Set();
   const errors = [];
+  const BATCH = 400;
   try {
     await conn.beginTransaction();
     // Dosya master: dönem atamalarını baştan yaz (çoklu grup satırları korunur)
@@ -287,58 +356,44 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
     const [bolumler] = await conn.query(
       "SELECT id, kanal, alt_kanal, uzman_tipi, marka_grubu_key, marka_grubu_adi, markalar FROM prim_bolum WHERE aktif=1"
     );
+    const [mevcutMagazalar] = await conn.query("SELECT id, prim_magaza, bayi FROM magaza");
+    const [mevcutUzmanlar] = await conn.query("SELECT id, normal_ad FROM uzman");
+    const magazaMap = new Map(mevcutMagazalar.map((m) => [String(m.prim_magaza), m.id]));
+    const magazaBayiMap = new Map(mevcutMagazalar.map((m) => [String(m.prim_magaza), m.bayi]));
+    const uzmanMap = new Map(mevcutUzmanlar.map((u) => [u.normal_ad, u.id]));
+
     // Mağaza başına uzman sayısını önce hesapla (senaryo seçimi için)
     const storeCount = new Map();
-    for (const row of rows) {
-      const pm = pick(row, "PRİM MAĞAZA", "PRIM MAGAZA");
-      if (!pm) continue;
-      const key = normalizeStore(pm);
+    for (const s of acikSatirlar) {
+      const key = normalizeStore(s.magaza);
       storeCount.set(key, (storeCount.get(key) || 0) + 1);
     }
 
-    for (const row of rows) {
-      const pm = pick(row, "PRİM MAĞAZA", "PRIM MAGAZA");
-      const uzmanAd = pick(row, "Uzman Ad-Soyad", "Uzman Ad-Sıyad", "UZMAN");
-      if (!pm || !uzmanAd) { err++; continue; }
-      const bayi = String(pick(row, "BAYİ", "BAYI") || "").trim().toLocaleUpperCase("tr-TR");
-      const grup = String(pick(row, "Group", "GRUP") || "").trim();
-      const primMagaza = String(pm).trim();
-      const magazaAdi = String(pick(row, "MAĞAZA", "MAGAZA") || primMagaza).trim();
-      const magazaKodu = pick(row, "MAĞAZA KODU", "MAGAZA KODU") || null;
-      const sehir = pick(row, "ŞEHİR", "SEHIR") || null;
+    // 1) Satırları bellekte çöz; mağaza/uzman upsert listelerini topla
+    const hazirSatirlar = [];
+    const magazaUpsert = new Map(); // prim_magaza -> row values
+    const uzmanUpsert = new Map(); // normal_ad -> [ad_soyad, normal_ad]
 
-      // Yeni mağaza/bayi Excel'de varsa otomatik sisteme eklenir; varsa bayi/ad/şehir güncellenir
-      const [[mevcutMagaza]] = await conn.query("SELECT id FROM magaza WHERE prim_magaza=?", [primMagaza]);
-      await conn.query(
-        `INSERT INTO magaza (magaza_kodu, bayi, magaza_adi, prim_magaza, sehir, aktif)
-         VALUES (?,?,?,?,?,1)
-         ON DUPLICATE KEY UPDATE
-           magaza_kodu=COALESCE(VALUES(magaza_kodu), magaza_kodu),
-           bayi=VALUES(bayi),
-           magaza_adi=VALUES(magaza_adi),
-           sehir=COALESCE(VALUES(sehir), sehir),
-           aktif=1`,
-        [magazaKodu, bayi || "?", magazaAdi, primMagaza, sehir]
-      );
-      if (!mevcutMagaza) yeniMagazaSet.add(primMagaza);
-      const [[st]] = await conn.query("SELECT id FROM magaza WHERE prim_magaza=?", [primMagaza]);
-
-      // Uzman: DB'de yoksa ekle (manuel "Uzman Ekle" gerekmez)
+    for (const s of acikSatirlar) {
+      const primMagaza = s.magaza;
+      const uzmanAd = s.uzmanAd;
+      const bayi = bayiTahminEt(primMagaza, s.bayiHam, magazaBayiMap.get(primMagaza));
+      const grup = s.grup;
+      const magazaAdi = s.magazaAdi || primMagaza;
+      const magazaKodu = s.magazaKodu;
+      const sehir = s.sehir;
       const normal = normalizeName(uzmanAd);
-      const [[mevcutUzman]] = await conn.query("SELECT id FROM uzman WHERE normal_ad=?", [normal]);
-      await conn.query(
-        `INSERT INTO uzman (ad_soyad, normal_ad, aktif) VALUES (?,?,1)
-         ON DUPLICATE KEY UPDATE ad_soyad=VALUES(ad_soyad), aktif=1`,
-        [String(uzmanAd).trim(), normal]
-      );
-      if (!mevcutUzman) yeniUzmanSet.add(normal);
-      const [[uz]] = await conn.query("SELECT id FROM uzman WHERE normal_ad=?", [normal]);
+      const adSoyad = String(uzmanAd).trim();
+
+      if (!magazaMap.has(primMagaza)) yeniMagazaSet.add(primMagaza);
+      if (!uzmanMap.has(normal)) yeniUzmanSet.add(normal);
+
+      magazaUpsert.set(primMagaza, [magazaKodu, bayi || "?", magazaAdi, primMagaza, sehir]);
+      uzmanUpsert.set(normal, [adSoyad, normal]);
 
       // Senaryo (bolum) seçimi: kanal + alt_kanal + grup adı
       // Bayi SEVIL → BEYMEN kanalında SEVIL alt_kanalı (Beymen'in Sevil noktası).
       // Bayi BEYMEN → BEYMEN kanalında BEYMEN alt_kanalı (Beymen mağazası).
-      // Aksi halde DB'de aynı grup için iki bölüm varken (BEYMEN DG %1.5 vs SEVIL DG %1.0)
-      // rastgele biri seçilir; alt_kanal ayrımı bu bug'ı kapatır.
       let kanal = ["SEPHORA", "BOYNER", "BEYMEN"].find((k) => bayi.includes(k)) || null;
       let altKanal = null;
       if (bayi === "SEVIL" || bayi.includes("SEVİL") || bayi.includes("SEVIL")) {
@@ -347,19 +402,77 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
       } else if (kanal === "BEYMEN") {
         altKanal = "BEYMEN";
       }
-      const uzmanSayisi = storeCount.get(normalizeStore(pm)) || 1;
+      const uzmanSayisi = storeCount.get(normalizeStore(primMagaza)) || 1;
       const uzmanTipi = uzmanSayisi >= 2 ? "COK_UZMAN" : "TEK_UZMAN";
       const bolum = eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal });
-      if (!bolum) { err++; errors.push(`Bölüm bulunamadı: ${pm} / ${grup}`); continue; }
+      if (!bolum) { err++; errors.push(`Bölüm bulunamadı: ${primMagaza} / ${grup}`); continue; }
 
+      hazirSatirlar.push({ primMagaza, normal, bolumId: bolum.id, grup });
+    }
+
+    // 2) Mağaza / uzmanları toplu upsert (uzak DB round-trip sayısını düşür)
+    const magazaList = [...magazaUpsert.values()];
+    for (let i = 0; i < magazaList.length; i += BATCH) {
+      const chunk = magazaList.slice(i, i + BATCH);
+      await conn.query(
+        `INSERT INTO magaza (magaza_kodu, bayi, magaza_adi, prim_magaza, sehir, aktif)
+         VALUES ?
+         ON DUPLICATE KEY UPDATE
+           magaza_kodu=COALESCE(VALUES(magaza_kodu), magaza_kodu),
+           bayi=VALUES(bayi),
+           magaza_adi=VALUES(magaza_adi),
+           sehir=COALESCE(VALUES(sehir), sehir),
+           aktif=1`,
+        [chunk.map((v) => [...v, 1])]
+      );
+    }
+    const uzmanList = [...uzmanUpsert.values()];
+    for (let i = 0; i < uzmanList.length; i += BATCH) {
+      const chunk = uzmanList.slice(i, i + BATCH);
+      await conn.query(
+        `INSERT INTO uzman (ad_soyad, normal_ad, aktif) VALUES ?
+         ON DUPLICATE KEY UPDATE ad_soyad=VALUES(ad_soyad), aktif=1`,
+        [chunk.map((v) => [...v, 1])]
+      );
+    }
+
+    // 3) Id map'lerini yenile
+    const [magazaRows] = await conn.query("SELECT id, prim_magaza FROM magaza");
+    const [uzmanRows] = await conn.query("SELECT id, normal_ad FROM uzman");
+    const magazaIdByPrim = new Map(magazaRows.map((m) => [String(m.prim_magaza), m.id]));
+    const uzmanIdByNormal = new Map(uzmanRows.map((u) => [u.normal_ad, u.id]));
+
+    // 4) Atamaları toplu yaz
+    const atamaBatch = [];
+    for (const s of hazirSatirlar) {
+      const magazaId = magazaIdByPrim.get(s.primMagaza);
+      const uzmanId = uzmanIdByNormal.get(s.normal);
+      if (!magazaId || !uzmanId) {
+        err++;
+        errors.push(`Kimlik çözülemedi: ${s.primMagaza} / ${s.normal}`);
+        continue;
+      }
+      atamaBatch.push([donemId, uzmanId, magazaId, s.bolumId, s.grup]);
+      ok++;
+      if (atamaBatch.length >= BATCH) {
+        const chunk = atamaBatch.splice(0, BATCH);
+        await conn.query(
+          `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi)
+           VALUES ?
+           ON DUPLICATE KEY UPDATE grup_adi=VALUES(grup_adi)`,
+          [chunk]
+        );
+      }
+    }
+    if (atamaBatch.length) {
       await conn.query(
         `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi)
-         VALUES (?,?,?,?,?)
+         VALUES ?
          ON DUPLICATE KEY UPDATE grup_adi=VALUES(grup_adi)`,
-        [donemId, uz.id, st.id, bolum.id, grup]
+        [atamaBatch]
       );
-      ok++;
     }
+
     const yeniUzman = yeniUzmanSet.size;
     const yeniMagaza = yeniMagazaSet.size;
     const ozet = [
@@ -985,5 +1098,5 @@ module.exports = {
   importSiralama,
   importUzmanMagaza,
   importStok,
-  _internals: { baslikSatiriBul, readSheet, pick, formatKontrol },
+  _internals: { baslikSatiriBul, readSheet, pick, formatKontrol, uzmanMagazaSatirlariniAc },
 };
