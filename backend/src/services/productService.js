@@ -292,9 +292,9 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
     onProgress?.({ asama: "esleme", yapilan: 0, toplam: 1, adim: "atama" });
 
     if (ownsConnection) await conn.beginTransaction();
-    // Zeops'ta satışı olan ama master'da o mağazaya atanmamış uzmanlar:
-    // Excel gibi mağaza kırılımı için mevcut senaryolarını o mağazaya kopyala
-    const atamaEklenen = await tamamlaEksikAtamalar(conn, donemId);
+    // Uzman-mağaza Excel master'a sadık kal: Zeops'ta başka mağazada satış
+    // görünce atama kopyalama KAPALI (Bozdağ Akasya + Marmara Forum bug'ı).
+    const atamaEklenen = 0;
     if (ownsConnection) await conn.commit();
 
     const resolver = await loadProductResolver(conn);
