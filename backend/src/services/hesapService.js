@@ -401,17 +401,8 @@ async function hesapla(donemId, options = {}) {
       return null;
     }
 
-    // --- YENİ MANTIK ---
-    // Uzman-Mağaza-Grup dosyası "uzmanın hangi mağazalarda çalıştığı"nı değil,
-    // uzmanın "hangi ana grup(lar)ın uzmanı" olduğunu belirler. Uzman kendi
-    // atama mağazasının dışında da satış yapabilir (Excel de böyle yapıyor).
-    //
-    // Bu yüzden:
-    //  a) uzmanBolumler[uzman_id] = uzmanın atandığı senaryolar (ana grup listesi)
-    //  b) Zeops satırında: ürün markası uzmanın gruplarından hangisine düşerse
-    //     o senaryo uygulanır — Zeops mağazasına.
-    //  c) Uzmanın hiç atanmadığı bir noktaya (Cevahir/Capacity gibi) satsa
-    //     bile atama satırlarındaki senaryo geçerli olur.
+    // Uzman-Mağaza-Grup Excel master: uzman yalnızca o dosyadaki mağaza(lar)da
+    // primlenir. Başka mağazada satış olsa bile grup dışı (Excel Prim Çalışma).
     const uzmanBolumler = new Map(); // uzman_id -> [atama_kaydı]
     for (const a of atamalar) {
       if (!uzmanBolumler.has(a.uzman_id)) uzmanBolumler.set(a.uzman_id, []);
@@ -425,18 +416,12 @@ async function hesapla(donemId, options = {}) {
       atamaByUzmanMagaza.get(k).push(a);
     }
 
-    // Uzman × Zeops mağazası için uygulanacak senaryo:
-    //  1. Bu mağazadaki atamalardan ürün markasının grubuna uyanı seç
-    //  2. Yoksa uzmanın diğer mağaza atamalarında uygun grup ara
-    //  3. Hiçbiri uymazsa → prim dışı (null)
+    // Sadece bu uzman × bu Zeops mağazası ataması + ürün markası grubu uyarsa prim.
+    // Diğer mağazadaki atamayı buraya taşıma → grup dışı.
     function bolumSec(uzmanId, magazaId, urunMarka) {
       const dogrudanlar = atamaByUzmanMagaza.get(`${uzmanId}|${magazaId}`) || [];
       for (const d of dogrudanlar) {
         if (markaGrubunda(d.markalar, urunMarka, markaGrupMap)) return d;
-      }
-      const atamalarList = uzmanBolumler.get(uzmanId) || [];
-      for (const a of atamalarList) {
-        if (markaGrubunda(a.markalar, urunMarka, markaGrupMap)) return a;
       }
       return null;
     }
@@ -544,8 +529,6 @@ async function hesapla(donemId, options = {}) {
       ]);
       const key = `${b.uzman_id}|${b.magaza_id}|${atama.bolum_id}`;
       if (!ozetMap.has(key)) {
-        // Uzmanın ata mağazası olmasa bile bu Zeops mağazasında hesap yapılır;
-        // atama nesnesindeki bolum_id (senaryo oranları) korunur.
         ozetMap.set(key, { atama: { ...atama, magaza_id: b.magaza_id }, primeEsas: 0, adet: 0 });
       }
       ozetMap.get(key).primeEsas += primeEsas;
