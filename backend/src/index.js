@@ -6,7 +6,7 @@ require("dotenv").config();
 
 const pool = require("./db");
 const { importZeops, importSellout, importHedef, importSiralama, importUzmanMagaza, importStok } = require("./services/importService");
-const { hesapla, markaGrubunda, genisletMarkalar } = require("./services/hesapService");
+const { hesapla, markaGrubunda, genisletMarkalar, grupAdindanMarkaAnahtarlari } = require("./services/hesapService");
 const { normalizeName } = require("./util");
 const {
   normalizeCanonicalCode,
@@ -1309,6 +1309,29 @@ async function primRaporuVerisi(donemId) {
   );
   const markaGrupMap = new Map(mgRows.map((r) => [normalizeName(r.marka), r.marka_grup]));
 
+  // Excel Satış Grup kırılımı: prim_hesap_satir → (uzman, magaza, bolum, satış_grup) ciro
+  const [hesapSgRows] = await pool.query(
+    `SELECT h.uzman_id, h.magaza_id, h.bolum_id,
+            u.marka, u.aks, a.grup_adi, SUM(h.prime_esas_tutar) AS esas
+       FROM prim_hesap_satir h
+       LEFT JOIN urun u ON u.id = h.urun_id
+       LEFT JOIN uzman_atama a
+         ON a.donem_id = h.donem_id AND a.uzman_id = h.uzman_id
+        AND a.magaza_id = h.magaza_id AND a.bolum_id = h.bolum_id
+      WHERE h.donem_id = ?
+      GROUP BY h.uzman_id, h.magaza_id, h.bolum_id, u.marka, u.aks, a.grup_adi`,
+    [donemId]
+  );
+  const sgKovaMap = new Map(); // `${uzman}|${magaza}|${bolum}` → Map(satis_grup → E)
+  for (const hr of hesapSgRows) {
+    const sg = toplanmisSatisGrupKova(hr.marka, hr.aks, markaGrupMap.get(normalizeName(hr.marka)), hr.grup_adi);
+    if (!sg) continue;
+    const key = `${hr.uzman_id}|${hr.magaza_id}|${hr.bolum_id || ""}`;
+    if (!sgKovaMap.has(key)) sgKovaMap.set(key, new Map());
+    const kova = sgKovaMap.get(key);
+    kova.set(sg, (kova.get(sg) || 0) + Number(hr.esas || 0));
+  }
+
   // Her satırı Excel kolonlarına dağıt
   function normalize(s) { return String(s || "").toLocaleUpperCase("tr-TR").trim(); }
   function normAscii(s) {
@@ -1483,16 +1506,66 @@ async function primRaporuVerisi(donemId) {
     // Y: Toplam Prim Yüzdesi
     const Y = E > 0 ? +(W / E).toFixed(4) : 0;
 
+    // Görünüm: Excel Prim Çalışma2 — Marka Grup = grup_adi; Satış Grup kırılımı ayrıca uygulanır
     return {
       uzman_id: r.uzman_id, uzman: r.ad_soyad,
-      marka_grup: r.marka_grubu_adi || markalar.join(", "),
+      marka_grup: r.grup_adi || r.marka_grubu_adi || markalar.join(", "),
       magaza: r.prim_magaza, bayi: r.bayi,
-      satis_grup: markalar.join(", ") || null,
+      bolum_id: r.bolum_id,
+      magaza_id: r.magaza_id,
+      satis_grup: raporSatisGrupEtiketi(r.grup_adi, markalar),
       E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y,
     };
   }
 
-  const satirlar = rows.map(satirYap);
+  const PARA_ALANLAR = ["E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","W"];
+
+  /** Tek ozet satırını Excel gibi Satış Grup kovalarına böler; prim tutarları E oranıyla dağıtılır. */
+  function satisGrupKirilim(base) {
+    const key = `${base.uzman_id}|${base.magaza_id}|${base.bolum_id || ""}`;
+    const kova = sgKovaMap.get(key);
+    if (!kova || kova.size === 0) return [base];
+
+    const entries = [...kova.entries()]
+      .filter(([, v]) => Number(v) > 0.005)
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]), "tr"));
+    if (!entries.length) return [base];
+    if (entries.length === 1) {
+      return [{ ...base, satis_grup: entries[0][0] }];
+    }
+
+    const bazE = Number(base.E) || 0;
+    const kovaToplam = entries.reduce((s, [, v]) => s + Number(v), 0) || 1;
+    const out = [];
+    const acc = Object.fromEntries(PARA_ALANLAR.filter((k) => k !== "E").map((k) => [k, 0]));
+
+    for (let i = 0; i < entries.length; i++) {
+      const [sg, esas] = entries[i];
+      const w = Number(esas) / kovaToplam;
+      const row = { ...base, satis_grup: sg, V: base.V };
+      const son = i === entries.length - 1;
+
+      if (son) {
+        row.E = +(bazE - out.reduce((s, x) => s + Number(x.E), 0)).toFixed(2);
+        for (const k of PARA_ALANLAR) {
+          if (k === "E") continue;
+          row[k] = +(Number(base[k] || 0) - acc[k]).toFixed(2);
+        }
+      } else {
+        row.E = +Number(esas).toFixed(2);
+        for (const k of PARA_ALANLAR) {
+          if (k === "E") continue;
+          row[k] = +(Number(base[k] || 0) * w).toFixed(2);
+          acc[k] += row[k];
+        }
+      }
+      row.Y = row.E > 0 ? +(Number(row.W) / row.E).toFixed(4) : 0;
+      out.push(row);
+    }
+    return out;
+  }
+
+  const satirlar = rows.flatMap((r) => satisGrupKirilim(satirYap(r)));
 
   // Uzman bazlı toplam satırları oluştur
   const uzmanToplamlar = new Map();
@@ -1628,6 +1701,99 @@ function satisGrupHesapla(marka, aks, markaGrup) {
   if (!m && !a) return "";
   if (!g || g === "PUIG" || g === "BPI" || g.startsWith("PUIG ")) return a || "";
   return String(markaGrup || marka || "").trim();
+}
+
+/** Rapor/toplanmış: teknik kod → Excel'deki Satış Grup etiketi (görünüm only). */
+const MARKA_SATIS_ETIKET = {
+  DG: "DOLCE & GABBANA",
+  GIV: "GIVENCHY",
+  GIVENCHY: "GIVENCHY",
+  LP: "LA PRAIRIE",
+  SENSAI: "SENSAI",
+  "SENSAİ": "SENSAI",
+  HERMES: "HERMES",
+  DIOR: "DIOR",
+  SISLEY: "SISLEY",
+  PUIG: "PARFÜM",
+};
+
+function markaKoduEtiket(kod) {
+  const k = String(kod || "").toLocaleUpperCase("tr-TR").trim();
+  return MARKA_SATIS_ETIKET[k] || MARKA_SATIS_ETIKET[k.replace(/İ/g, "I")] || kod;
+}
+
+/**
+ * Toplanmış Satış Grup kovası (Excel Prim Çalışma2).
+ * - DIOR / LA PRAIRIE / SISLEY / SENSAI her zaman kendi adı
+ * - Tek marka uzmanı (Givenchy, Hermes, Dolce…): o markanın satışı → marka adı
+ * - Parfüm Tüm / Puig / çoklu havuz: diğer parfüm markaları → AKS (genelde PARFÜM)
+ */
+function toplanmisSatisGrupKova(marka, aks, soGrup, grupAdi) {
+  const m = String(marka || "").toLocaleUpperCase("tr-TR").trim();
+  const g = String(soGrup || "").toLocaleUpperCase("tr-TR").trim();
+  const a = aksTemizle(aks) || "PARFÜM";
+  const keeper = (() => {
+    if (g === "DIOR" || m === "DIOR") return "DIOR";
+    if (g === "LA PRAIRIE" || m === "LA PRAIRIE" || m === "LP") return "LA PRAIRIE";
+    if (g === "SISLEY" || m === "SISLEY") return "SISLEY";
+    if (g === "SENSAI" || g === "SENSAİ" || m === "SENSAI" || m === "SENSAİ") return "SENSAI";
+    return null;
+  })();
+  if (keeper) return keeper;
+
+  const keys = grupAdindanMarkaAnahtarlari(grupAdi);
+  const gAdi = String(grupAdi || "")
+    .toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C")
+    .trim();
+  const isTum = gAdi.includes("TUM MARKA")
+    || (gAdi.includes("PARFUM") && gAdi.includes("TUM"))
+    || gAdi === "PARFUM";
+  const isSingle = keys.length === 1 && keys[0] !== "PUIG";
+
+  if (isSingle) {
+    const specialty = markaKoduEtiket(keys[0]);
+    const markaSpecialty =
+      (keys[0] === "DG" && /DOLCE|GABBANA/i.test(m))
+      || (keys[0] === "GIV" && /GIVENCHY/i.test(m))
+      || (keys[0] === "HERMES" && /HERMES/i.test(m))
+      || (keys[0] === "DIOR" && /DIOR/i.test(m))
+      || (keys[0] === "SISLEY" && /SISLEY/i.test(m))
+      || (keys[0] === "LP" && /PRAIRIE|^LP$/i.test(m))
+      || ((keys[0] === "SENSAI" || keys[0] === "SENSAİ") && /SENSAI/i.test(m))
+      || (specialty && m === String(specialty).toLocaleUpperCase("tr-TR"));
+    if (markaSpecialty) return specialty;
+    // Uzmanın kendi markası dışında: PUIG/BPI → AKS, diğer named → AKS (Excel PARFÜM)
+    return a;
+  }
+
+  // Çoklu / Puig / tüm markalar: keeper dışı → AKS (PARFÜM vb.)
+  if (isTum || keys.length !== 1 || keys[0] === "PUIG") return a;
+  return a;
+}
+
+/** Kova yoksa fallback: atama grubuna göre tek Satış Grup etiketi. */
+function raporSatisGrupEtiketi(grupAdi, markalar) {
+  const g = String(grupAdi || "")
+    .toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C")
+    .trim();
+  const keys = grupAdindanMarkaAnahtarlari(grupAdi);
+  const tumHavuz = g.includes("TUM MARKA")
+    || (g.includes("PARFUM") && g.includes("TUM"))
+    || g === "PARFUM";
+  if (tumHavuz) return "PARFÜM";
+  if (keys.length === 1) {
+    if (keys[0] === "PUIG") return "PARFÜM";
+    return markaKoduEtiket(keys[0]);
+  }
+  if (keys.length > 1) return "PARFÜM";
+  const list = Array.isArray(markalar) ? markalar.filter(Boolean) : [];
+  if (list.length === 1) return markaKoduEtiket(list[0]);
+  if (list.length > 1) return list.map(markaKoduEtiket).join(", ");
+  return null;
 }
 
 function aksTemizle(aks) {
@@ -2293,9 +2459,10 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     return null;
   }
 
-  const guvenliAd = String(donem.ad || "donem")
-    .replace(/[^\w\-ğüşıöçĞÜŞİÖÇ ]+/gi, "")
-    .replace(/\s+/g, "_");
+  // HTTP header ASCII olmalı — "Ağustos" Content-Disposition'ı kırıp 500 veriyordu
+  const guvenliAd = normalizeName(donem.ad || "donem")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "donem";
   res.setHeader(
     "Content-Type",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
