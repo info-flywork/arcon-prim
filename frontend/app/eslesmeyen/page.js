@@ -29,7 +29,7 @@ const DURUM = {
   },
   atama_yok: {
     kisa: "Atama yok / Grup dışı",
-    aciklama: "Mağazaya atanmamış, veya 2+ Puig uzmanlı noktada sorumlu Puig uzmanının Givenchy / Hermes / DG parfümü (Grup Dışı). Diğer uzmanlar sattığına prim alır.",
+    aciklama: "Mağazaya atanmamış, veya 2+ parfüm sorumlusunda karşı grup satışı (Puig ↔ Hermes/Givenchy/Dolce). Tek uzmanlı yerde bu kesim yok.",
   },
   urun_cakisma: {
     kisa: "Ürün çakışması",

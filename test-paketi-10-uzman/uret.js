@@ -447,7 +447,7 @@ async function main() {
         if (primAdet === s.adet) aciklama = "Ok";
         else if (primAdet > 0) aciklama = `Kısmi Ok — ${s.adet - primAdet} adet mükerrer`;
         else aciklama = "Mükerrer beyan — sell-out kalanı 0";
-        satisTuru = primAdet > 0 ? "Grup Satış" : "Prim Hesaplama Dışı";
+        satisTuru = primAdet > 0 ? "Grup Satış" : "Mağazada Eşleşmeyen Satış";
       }
       ham.push({
         u, s, ur, birim, primAdet,

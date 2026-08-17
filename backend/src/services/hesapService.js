@@ -31,9 +31,10 @@ const { relinkDonemBeyan } = require("./beyanRelink");
 const {
   dfbPrimHaricMi,
   puigUzmanGrubuMu,
-  puigUzmanSayisiHaritasi,
+  hgdPuigKesilirGrubuMu,
+  parfumUzmanSayisiHaritasi,
   puigParfumMu,
-  parfumHavuzUrunuMu,
+  hgdParfumMu,
 } = require("./grupDisiKural");
 
 /**
@@ -381,11 +382,12 @@ async function hesapla(donemId, options = {}) {
       if (!atamaByUzmanMagaza.has(k)) atamaByUzmanMagaza.set(k, []);
       atamaByUzmanMagaza.get(k).push(a);
     }
-    const puigSayisiByMagaza = puigUzmanSayisiHaritasi(atamalar);
+    const parfumSayisiByMagaza = parfumUzmanSayisiHaritasi(atamalar);
 
-    // Prim: mağazada ataması varsa ver. Grup dışı yalnız o noktanın sorumlu
-    // Puig uzmanlarını keser (2+ Puig): Givenchy / Hermes / DG parfüm.
-    // Tek uzmanlı yerde kesim yok. Atilla / Parfüm Tüm / Dior satışı primlenir.
+    // Prim: mağazada ataması varsa ver.
+    // Tek parfüm sorumlusu: karşı grubu da primle.
+    // 2+ parfüm sorumlusu: Puig ↔ Hermes/Givenchy/Dolce birbirini keser.
+    // Parfüm Tüm kendi havuzunda kalır. Dior/Sensai fallback ile prim.
     // Narciso-Issey-Zadig DFB — Excel Prime Dahil Değil.
     function bolumSec(uzmanId, magazaId, urunMarka, aks) {
       const dogrudanlar = atamaByUzmanMagaza.get(`${uzmanId}|${magazaId}`) || [];
@@ -394,16 +396,13 @@ async function hesapla(donemId, options = {}) {
         if (markaGrubunda(d.markalar, urunMarka, markaGrupMap)) return d;
       }
       if (dfbPrimHaricMi(urunMarka)) return null;
-      const puigAtama = dogrudanlar.find((d) => puigUzmanGrubuMu(d.grup_adi));
-      const puigSayisi = puigSayisiByMagaza.get(magazaId) || 0;
-      const soGrup = markaGrupMap.get(normalizeName(urunMarka));
-      if (
-        puigAtama
-        && puigSayisi >= 2
-        && !puigParfumMu(urunMarka, aks, soGrup)
-        && parfumHavuzUrunuMu(urunMarka, aks, soGrup)
-      ) {
-        return null;
+      const parfumSayisi = parfumSayisiByMagaza.get(magazaId) || 0;
+      if (parfumSayisi >= 2) {
+        const soGrup = markaGrupMap.get(normalizeName(urunMarka));
+        const puigAtama = dogrudanlar.find((d) => puigUzmanGrubuMu(d.grup_adi));
+        const hgdAtama = dogrudanlar.find((d) => hgdPuigKesilirGrubuMu(d.grup_adi));
+        if (puigAtama && hgdParfumMu(urunMarka, aks, soGrup)) return null;
+        if (hgdAtama && puigParfumMu(urunMarka, aks, soGrup)) return null;
       }
       return dogrudanlar[0];
     }
@@ -486,7 +485,7 @@ async function hesapla(donemId, options = {}) {
         }
         if (so.ilkSatir) so.ilkSatir = false;
       } else {
-        aciklama = "Sell-out kaydı yok — prim hesaplanmadı";
+        aciklama = "Mağazada Eşleşmeyen Satış";
       }
       return { primAdet, birim, aciklama, primeEsas: +(primAdet * birim).toFixed(2) };
     }

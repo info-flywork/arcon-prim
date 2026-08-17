@@ -177,7 +177,7 @@ export default function PrimRaporu() {
       .then(async (r) => {
         const d = await r.json();
         if (iptal) return;
-        if (!r.ok) throw new Error(d.hata || "Satır satır rapor yüklenemedi");
+        if (!r.ok) throw new Error(d.hata || "Prim Çalışması rapor yüklenemedi");
         setSatirVeri(d);
         setYukleniyor(false);
       })
@@ -361,8 +361,8 @@ export default function PrimRaporu() {
           <h2>Prim Çalışma Raporu</h2>
           <p>
             {gorunum === "toplanmis"
-              ? "Sistem hesabı — toplanmış pivot (Prim Çalışma2 görünümü). İndirilebilir temiz sonuç."
-              : `Satır satır görünüm. ${GRUP_DISI_OZET}`}
+              ? "Sistem hesabı — Prim Hesaplama pivot (Prim Çalışma2 görünümü). İndirilebilir temiz sonuç."
+              : `Prim Çalışması görünüm. ${GRUP_DISI_OZET}`}
           </p>
         </div>
       </section>
@@ -375,7 +375,7 @@ export default function PrimRaporu() {
           className={gorunum === "toplanmis" ? "aktif" : ""}
           onClick={() => setGorunum("toplanmis")}
         >
-          Toplanmış
+          Prim Hesaplama
         </button>
         <button
           type="button"
@@ -384,7 +384,7 @@ export default function PrimRaporu() {
           className={gorunum === "satirlar" ? "aktif" : ""}
           onClick={() => { setGorunum("satirlar"); setSayfa(1); }}
         >
-          Satır satır
+          Prim Çalışması
         </button>
       </div>
 
@@ -573,7 +573,7 @@ export default function PrimRaporu() {
             <>
               <span className="rapor-progress-spin" />
               <h3>Prim hesaplanıyor</h3>
-              <p>Satır satır rapor hesap bitince dolacak.</p>
+              <p>Prim Çalışması rapor hesap bitince dolacak.</p>
               <div className="rapor-progress" aria-label="Hesaplama ilerleme">
                 <i style={{ animation: "rapor-progress-kay 1.2s ease infinite" }} />
               </div>

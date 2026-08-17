@@ -13,7 +13,7 @@ function durumRozet(aciklama) {
   if (aciklama === "Ok") return { sinif: "ok", metin: "Ok" };
   if (aciklama.startsWith("Kısmi")) return { sinif: "notr", metin: "Kısmi Ok" };
   if (aciklama.startsWith("Mükerrer")) return { sinif: "hata", metin: "Mükerrer Giriş" };
-  if (aciklama.startsWith("Sell-out")) return { sinif: "hata", metin: "Sell-out kaydı yok" };
+  if (aciklama.startsWith("Mağazada Eşleşmeyen Satış")) return { sinif: "hata", metin: "Mağazada Eşleşmeyen Satış" };
   return { sinif: "notr", metin: aciklama };
 }
 
@@ -72,7 +72,7 @@ export default function Mutabakat() {
       <p className="aciklama">
         Uzmanların beyanlarını mağaza satış verisiyle karşılaştıran satır bazlı kontrol tablosu. Her satır için
         sistem, o beyan için prim ödenip ödenmeyeceğini belirler: <b>Ok</b>, <b>Kısmi Ok</b>,
-        <b> Mükerrer Giriş</b> ya da <b>Sell-out kaydı yok</b>. Excel'deki "Çalışılmış İlk Kısım (Maviler)"
+        <b> Mükerrer Giriş</b> ya da <b>Mağazada Eşleşmeyen Satış</b>. Excel'deki "Çalışılmış İlk Kısım (Maviler)"
         sekmesinin sistem tarafından üretilen karşılığı.
       </p>
       <DonemSec value={donem} onChange={setDonem} />
@@ -97,7 +97,7 @@ export default function Mutabakat() {
                 <option value="ok">Ok</option>
                 <option value="kismi">Kısmi Ok</option>
                 <option value="mukerrer">Mükerrer Giriş</option>
-                <option value="sellout_yok">Sell-out kaydı yok</option>
+                <option value="sellout_yok">Mağazada Eşleşmeyen Satış</option>
               </select>
               <select value={filtre.uzman} onChange={(e) => setFiltre({ ...filtre, uzman: e.target.value })}>
                 <option value="">Tüm uzmanlar</option>

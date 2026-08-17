@@ -1081,7 +1081,7 @@ app.get("/api/rapor/detay/:donemId/:uzmanId", wrap(async (req, res) => {
 }));
 
 // Mutabakat (Maviler) — satır bazlı Zeops ↔ Sell-out karşılaştırması
-// Filtreler: uzman, magaza, marka, durum (Ok / Kısmi Ok / Mükerrer / Sell-out kaydı yok)
+// Filtreler: uzman, magaza, marka, durum (Ok / Kısmi Ok / Mükerrer / Mağazada Eşleşmeyen Satış)
 app.get("/api/mutabakat/:donemId", wrap(async (req, res) => {
   const { uzman, magaza, marka, durum, q } = req.query;
   const args = [req.params.donemId];
@@ -1834,7 +1834,7 @@ function aksTemizle(aks) {
     .trim();
 }
 
-/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ Puig uzmanında Givenchy / Hermes / DG parfüm. */
+/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ parfüm sorumlusunda karşı grup (Puig ↔ HGD). */
 function satisTuruHesapla(eslesmeDurum, hesapId, extra = {}) {
   if (hesapId != null) return "Grup Satış";
   if (eslesmeDurum === "atama_yok" && grupDisiSatiriMi(extra)) return "Grup Dışı";

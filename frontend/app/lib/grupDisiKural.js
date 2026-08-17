@@ -1,10 +1,12 @@
-/** Grup dışı yalnız o noktanın sorumlu Puig uzmanlarını etiketler; kalan herkes sattığına prim alır. */
+/** Tek uzmanda herkese prim; 2+ parfüm sorumlusunda Puig ile Hermes/Givenchy/Dolce birbirini keser. */
 
 export const GRUP_DISI_OZET =
-  "Mağazada ataması olan herkes sattığına prim alır. Grup dışı yalnız sorumlu Puig uzmanında: 2 veya daha fazla Puig uzmanı varsa onların Givenchy / Hermes / DG parfümü kesilir. Tek uzmanlı yerde bu kesim yok.";
+  "Tek parfüm sorumlusu olan mağazada kural yok — sattığına prim. 2+ uzmanda Puigci Hermes/Givenchy/Dolce alamaz. Givenchy+Hermes+Dolce grubuna bakan Puig alamaz. Hermes / Givenchy / Dolce'ye tek bakan Puig satsa prim alır. Dior / Sensai / LP kesilmez.";
 
 export const GRUP_DISI_MADDELER = [
-  "Nişantaşı: Dalia + Uğur = 2 Puig sorumlusu → onların Givenchy / Hermes / DG parfümü Grup Dışı.",
-  "Atilla Givenchy uzmanı: Givenchy (parfüm kutusu dahil) ve sattığı Dior / Sensai / Puig prim.",
-  "Tek Puig uzmanlı mağazada kesim yok. Narciso / Issey / Zadig DFB — Prime Dahil Değil.",
+  "Puig grubu: Rabanne, Jean Paul Gaultier, Carolina Herrera.",
+  "Karşı grup (kombin): Givenchy+Hermes+Dolce — 2+ uzmanda Puig satışı Grup Dışı.",
+  "Tek marka (yalnız Hermes, yalnız Givenchy, yalnız Dolce): Puig satsa prim var.",
+  "Tek uzman: herkese sattığına prim. Parfüm Tüm kendi havuzunu alır.",
+  "Narciso / Issey / Zadig DFB — Prime Dahil Değil.",
 ];

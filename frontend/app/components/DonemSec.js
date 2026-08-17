@@ -25,8 +25,9 @@ export default function DonemSec({ value, onChange }) {
         setDonemler(liste);
         const queryVar = queryDonem && liste.some((donem) => Number(donem.id) === queryDonem);
         const seciliListede = liste.some((donem) => Number(donem.id) === Number(value));
+        const sonHesaplanan = [...liste].reverse().find((donem) => donem.durum === "hesaplandi");
         if (queryVar) onChange(queryDonem);
-        else if (!seciliListede) onChange(guncel?.id || liste[0]?.id);
+        else if (!seciliListede) onChange(sonHesaplanan?.id || guncel?.id || liste[0]?.id);
       } catch (error) {
         setHata(error.message);
       } finally {

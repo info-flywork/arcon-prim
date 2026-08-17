@@ -495,7 +495,7 @@ export default function ExcelFiltreTablo({
                       style={{
                         border: "1px solid #ccc",
                         padding: "3px 5px",
-                        textAlign: k.sayisal ? "right" : "left",
+                        textAlign: k.sayisal ? "center" : "left",
                         whiteSpace: "nowrap",
                         color: "#000",
                         fontSize: 11,

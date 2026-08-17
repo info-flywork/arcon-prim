@@ -148,14 +148,13 @@ export default function PrimHesaplama() {
 
         setDonemler(liste);
         const queryDonem = Number(new URLSearchParams(window.location.search).get("donem") || 0) || null;
-        // Öncelik: URL → içinde bulunulan ay → yoksa son hesaplanan → ilk açık
+        // Öncelik: URL → son hesaplanan (yüklü ay) → takvim ayı → ilk açık
         const sonHesaplanan = [...liste].reverse().find((item) => item.durum === "hesaplandi");
-        const ilkAcik = liste.find((item) => item.durum === "acik");
         const secili =
           (queryDonem && liste.find((item) => Number(item.id) === queryDonem)) ||
-          buAy ||
           sonHesaplanan ||
-          ilkAcik ||
+          buAy ||
+          liste.find((item) => item.durum === "acik") ||
           liste[liste.length - 1];
         if (!secili) throw new Error("Açılacak dönem bulunamadı");
         setAcikId(secili.id);

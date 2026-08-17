@@ -1,8 +1,11 @@
 // =====================================================================
-// Grup dışı yalnızca o noktanın sorumlu Puig uzmanında (Dalia, Uğur):
-// 2+ Puig uzmanlı mağazada Givenchy / Hermes / DG parfüm etiketlenir.
-// Givenchy çalışanı (Atilla) kesilmez — sattığına prim (Dior, Sensai dahil).
-// Tek Puig'li noktada ayrım yok. Kalan herkese sattığı prim.
+// İki rakip parfüm grubu:
+//   Puig = Rabanne, Jean Paul Gaultier, Carolina Herrera
+//   HGD  = Hermes, Givenchy, Dolce
+// Tek uzmanlı mağazada kural yok — sattığına prim.
+// 2+ parfüm sorumlusu varsa karşı grubun parfümü Grup Dışı (prim yok).
+// Parfüm Tüm / Dior / Sensai / LP bu kesime girmez.
+// Narciso / Issey / Zadig DFB — Prime Dahil Değil.
 // =====================================================================
 const { normalizeName } = require("../util");
 
@@ -56,6 +59,14 @@ function givenchyParfumMu(marka, aks, markaGrup) {
   return givenchyMarkaMi(marka, markaGrup) && aksParfumMu(aks);
 }
 
+function hgdParfumMu(marka, aks, markaGrup) {
+  if (puigMarkaMi(marka, markaGrup)) return false;
+  if (!aksParfumMu(aks)) return false;
+  return givenchyMarkaMi(marka, markaGrup)
+    || hermesMarkaMi(marka, markaGrup)
+    || dgMarkaMi(marka, markaGrup);
+}
+
 function grupDisiUrunuMu(marka, aks, markaGrup) {
   return puigParfumMu(marka, aks, markaGrup) || givenchyParfumMu(marka, aks, markaGrup);
 }
@@ -69,16 +80,12 @@ function parfumUzmanGrubuMu(grupAdi) {
   if (g.includes("GIVENCHY")) return true;
   if (g.includes("HERMES")) return true;
   if (g.includes("DOLCE") || g.includes("GABBANA") || g.includes("D&G")) return true;
-  // "GIV" tek başına veya + ile (GIV+HERMES) — SENSAI'ye denk gelmesin
   if (/(^|[^A-Z])GIV([^A-Z]|$)/.test(g) && !g.includes("SENSAI")) return true;
   if (/(^|[^A-Z])DG([^A-Z]|$)/.test(g)) return true;
   return false;
 }
 
-/**
- * Asıl Puig uzmanı (Dalia / Uğur). Givenchy, Hermes, Parfüm Tüm sayılmaz.
- * Grup dışı kuralı yalnızca bunları keser.
- */
+/** Puig uzmanı (Rabanne / JPG / Carolina). Hermes-Giv-Dolce ve Parfüm Tüm değil. */
 function puigUzmanGrubuMu(grupAdi) {
   const g = normalizeName(grupAdi || "");
   if (!g) return false;
@@ -91,12 +98,46 @@ function puigUzmanGrubuMu(grupAdi) {
   return g.includes("PUIG") || g.includes("RABANNE") || g.includes("GAULTIER") || g.includes("HERRERA");
 }
 
+/** Hermes / Givenchy / Dolce sorumlusu (tek Hermes veya Giv+Hermes+Dolce). Puig ve Parfüm Tüm değil. */
+function hgdUzmanGrubuMu(grupAdi) {
+  const g = normalizeName(grupAdi || "");
+  if (!g) return false;
+  if (g.includes("TUM MARKA")) return false;
+  if (puigUzmanGrubuMu(grupAdi)) return false;
+  if (g.includes("GIVENCHY") || g.includes("HERMES") || g.includes("DOLCE") || g.includes("GABBANA")) {
+    return true;
+  }
+  if (/(^|[^A-Z])GIV([^A-Z]|$)/.test(g) && !g.includes("SENSAI")) return true;
+  if (/(^|[^A-Z])DG([^A-Z]|$)/.test(g)) return true;
+  return false;
+}
+
+function hgdParcaSayisi(grupAdi) {
+  const g = normalizeName(grupAdi || "");
+  let n = 0;
+  if (g.includes("HERMES")) n += 1;
+  if (g.includes("GIVENCHY") || (/(^|[^A-Z])GIV([^A-Z]|$)/.test(g) && !g.includes("SENSAI"))) n += 1;
+  if (g.includes("DOLCE") || g.includes("GABBANA") || (/(^|[^A-Z])DG([^A-Z]|$)/.test(g) && !g.includes("PUIG"))) n += 1;
+  return n;
+}
+
+/** Yalnız bir HGD markasına bakıyor (Hermes veya Givenchy veya Dolce). */
+function hgdTekMarkaGrubuMu(grupAdi) {
+  return hgdUzmanGrubuMu(grupAdi) && hgdParcaSayisi(grupAdi) === 1;
+}
+
+/** Yalnız Hermes bakıyor. */
+function hermesTekGrubuMu(grupAdi) {
+  return hgdTekMarkaGrubuMu(grupAdi) && normalizeName(grupAdi || "").includes("HERMES");
+}
+
+/** Puig satışı yalnız Giv+Hermes+Dolce (2+ marka) grubunda kesilir. Tek Giv / tek Hermes / tek Dolce kesilmez. */
+function hgdPuigKesilirGrubuMu(grupAdi) {
+  return hgdUzmanGrubuMu(grupAdi) && hgdParcaSayisi(grupAdi) >= 2;
+}
+
 function parfumHavuzUrunuMu(marka, aks, markaGrup) {
-  if (puigParfumMu(marka, aks, markaGrup)) return true;
-  if (!aksParfumMu(aks)) return false;
-  return givenchyMarkaMi(marka, markaGrup)
-    || hermesMarkaMi(marka, markaGrup)
-    || dgMarkaMi(marka, markaGrup);
+  return puigParfumMu(marka, aks, markaGrup) || hgdParfumMu(marka, aks, markaGrup);
 }
 
 /** Excel SATIŞ TÜRÜ: DFB GRUP-Prime Dahil Değil — Narciso / Issey / Zadig. */
@@ -109,11 +150,10 @@ function dfbPrimHaricMi(marka) {
   return false;
 }
 
-/** mağaza_id → Puig uzmanı adedi (Dalia/Uğur tipi). Givenchy çalışanı sayılmaz. */
-function puigUzmanSayisiHaritasi(atamalar) {
+function uzmanSayisiHaritasi(atamalar, grupFn) {
   const byMag = new Map();
   for (const a of atamalar || []) {
-    if (!puigUzmanGrubuMu(a.grup_adi)) continue;
+    if (!grupFn(a.grup_adi)) continue;
     if (a.magaza_id == null || a.uzman_id == null) continue;
     if (!byMag.has(a.magaza_id)) byMag.set(a.magaza_id, new Set());
     byMag.get(a.magaza_id).add(a.uzman_id);
@@ -123,9 +163,13 @@ function puigUzmanSayisiHaritasi(atamalar) {
   return out;
 }
 
-/** Eski ad: artık yalnızca Puig uzmanını sayar. */
+function puigUzmanSayisiHaritasi(atamalar) {
+  return uzmanSayisiHaritasi(atamalar, puigUzmanGrubuMu);
+}
+
+/** Mağazadaki Puig + Hermes/Giv/DG + Parfüm Tüm sorumluları. Dior/Sensai/LP sayılmaz. */
 function parfumUzmanSayisiHaritasi(atamalar) {
-  return puigUzmanSayisiHaritasi(atamalar);
+  return uzmanSayisiHaritasi(atamalar, parfumUzmanGrubuMu);
 }
 
 function parfumUzmanAtamasi(atamalar, uzmanId, magazaId) {
@@ -136,8 +180,11 @@ function parfumUzmanAtamasi(atamalar, uzmanId, magazaId) {
 }
 
 /**
- * Grup Dışı etiketi yalnız sorumlu Puig uzmanında: 2+ Puig + Giv/Hermes/DG
- * parfüm. Atilla ve diğerleri kesilmez — sattıklarına prim.
+ * 2+ parfüm sorumlusu varsa:
+ *   Puig uzmanı → Hermes/Givenchy/Dolce parfüm kesilir
+ *   Givenchy+Hermes+Dolce grubu → Puig kesilir
+ *   Tek Hermes / tek Givenchy / tek Dolce Puig satsa prim (kesilmez)
+ * Tek uzmanlı yerde kesim yok.
  */
 function grupDisiSatiriMi({
   primGrup,
@@ -147,11 +194,11 @@ function grupDisiSatiriMi({
   parfumUzmanSayisi,
   puigUzmanSayisi,
 } = {}) {
-  const n = Number(puigUzmanSayisi ?? parfumUzmanSayisi ?? 0);
+  const n = Number(parfumUzmanSayisi ?? puigUzmanSayisi ?? 0);
   if (n < 2) return false;
-  if (!puigUzmanGrubuMu(primGrup)) return false;
-  if (puigParfumMu(marka, aks, markaGrup)) return false;
-  return parfumHavuzUrunuMu(marka, aks, markaGrup);
+  if (puigUzmanGrubuMu(primGrup)) return hgdParfumMu(marka, aks, markaGrup);
+  if (hgdPuigKesilirGrubuMu(primGrup)) return puigParfumMu(marka, aks, markaGrup);
+  return false;
 }
 
 module.exports = {
@@ -160,9 +207,14 @@ module.exports = {
   givenchyMarkaMi,
   puigParfumMu,
   givenchyParfumMu,
+  hgdParfumMu,
   grupDisiUrunuMu,
   parfumUzmanGrubuMu,
   puigUzmanGrubuMu,
+  hgdUzmanGrubuMu,
+  hermesTekGrubuMu,
+  hgdTekMarkaGrubuMu,
+  hgdPuigKesilirGrubuMu,
   parfumHavuzUrunuMu,
   dfbPrimHaricMi,
   puigUzmanSayisiHaritasi,
