@@ -59,6 +59,18 @@ function normalizeStore(s) {
   return normalizeName(s);
 }
 
+/** Exact alias/ad, yoksa tek mağaza: "SEPHORA CITYS" → "SEPHORA CITYS KOZYATAGI" */
+function resolveStoreId(map, ham) {
+  const n = normalizeStore(ham);
+  if (!n) return null;
+  if (map.has(n)) return map.get(n);
+  const ids = new Set();
+  for (const [key, id] of map) {
+    if (key && (key === n || key.startsWith(`${n} `))) ids.add(id);
+  }
+  return ids.size === 1 ? [...ids][0] : null;
+}
+
 // "5.800,00" / "  2.258,33TL. " / 5800 -> Number
 function parseTrNumber(v) {
   if (v === null || v === undefined || v === "") return 0;
@@ -134,4 +146,4 @@ function cleanBarcode(v) {
   return s || null;
 }
 
-module.exports = { normalizeName, normalizeStore, parseTrNumber, parseDate, cleanBarcode, resolveUzmanId };
+module.exports = { normalizeName, normalizeStore, resolveStoreId, parseTrNumber, parseDate, cleanBarcode, resolveUzmanId };

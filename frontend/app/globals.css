@@ -1005,6 +1005,33 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
   font-size: 13.5px; font-weight: 750; white-space: nowrap;
 }
 
+.kural-not {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #d9e1ec;
+  border-radius: 12px;
+  background: #f6f8fb;
+}
+.kural-not strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+.kural-not p {
+  margin: 0 0 8px;
+  color: var(--metin-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.kural-not ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--metin-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.kural-not li + li { margin-top: 3px; }
+
 .kural-bildirim {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 11px;
   border: 1px solid transparent; border-radius: 12px; font-size: 15.5px; animation: belir .22s ease;

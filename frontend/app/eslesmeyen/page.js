@@ -28,8 +28,8 @@ const DURUM = {
     aciklama: "Dosyadaki uzman adı sistemde kayıtlı değil.",
   },
   atama_yok: {
-    kisa: "Atama yok",
-    aciklama: "Uzman var ama bu dönemde o mağazaya atanmamış (Uzman-Mağaza-Grup).",
+    kisa: "Atama yok / Grup dışı",
+    aciklama: "Mağazaya atanmamış, veya 2+ Puig uzmanlı noktada sorumlu Puig uzmanının Givenchy / Hermes / DG parfümü (Grup Dışı). Diğer uzmanlar sattığına prim alır.",
   },
   urun_cakisma: {
     kisa: "Ürün çakışması",

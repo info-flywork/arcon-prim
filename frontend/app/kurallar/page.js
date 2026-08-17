@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { GRUP_DISI_OZET, GRUP_DISI_MADDELER } from "../lib/grupDisiKural";
 
 const oranYaz = (deger) =>
   Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
@@ -233,6 +234,16 @@ export default function Kurallar() {
           <p>Onaylı kural setini inceleyin, oranları güvenle güncelleyin.</p>
         </div>
       </section>
+
+      <aside className="kural-not">
+        <strong>Grup dışı</strong>
+        <p>{GRUP_DISI_OZET}</p>
+        <ul>
+          {GRUP_DISI_MADDELER.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      </aside>
 
       <div className="kural-araclar">
         <div className="kural-arama">

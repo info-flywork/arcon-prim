@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import DonemSec from "../components/DonemSec";
 import ExcelFiltreTablo from "../components/ExcelFiltreTablo";
+import { GRUP_DISI_OZET } from "../lib/grupDisiKural";
 
 const tl = (v) => {
   if (v == null || v === "") return "";
@@ -323,7 +324,7 @@ export default function PrimRaporu() {
           <p>
             {gorunum === "toplanmis"
               ? "Sistem hesabı — toplanmış pivot (Prim Çalışma2 görünümü). İndirilebilir temiz sonuç."
-              : "Satır satır görünüm. Filtrele veya başlıktaki huni ile tüm dönem verisinde süzün; hücreleri sürükleyerek toplayın."}
+              : `Satır satır görünüm. ${GRUP_DISI_OZET}`}
           </p>
         </div>
       </section>
@@ -374,7 +375,9 @@ export default function PrimRaporu() {
                 <option value="Mükerrer">Mükerrer</option>
                 <option value="Eşleşmeyen">Eşleşmeyen / primsiz</option>
                 <option value="Grup Satış">Grup Satış</option>
-                <option value="Grup Dışı">Grup Dışı</option>
+                <option value="Grup Dışı" title={GRUP_DISI_OZET}>
+                  Grup Dışı (Puig uzmanı / Givenchy parfüm)
+                </option>
               </select>
               <button type="submit" className="btn ikincil">Filtrele</button>
               {(arama || aciklama || aramaInput || filtreAktifMi(kolonFiltre)) && (

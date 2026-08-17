@@ -17,6 +17,11 @@ const {
   mergeProducts,
 } = require("./services/productService");
 const { getUniqFarklar } = require("./services/uniqFarkService");
+const { loadUniqBridge } = require("./services/uniqBridge");
+const {
+  grupDisiSatiriMi,
+  parfumUzmanSayisiHaritasi,
+} = require("./services/grupDisiKural");
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -1706,11 +1711,14 @@ function tarihYaz(v) {
   return `${gg}.${aa}.${d.getFullYear()}`;
 }
 
-function raporAciklamaUret(hAciklama, eslesmeDurum) {
+function raporAciklamaUret(hAciklama, eslesmeDurum, extra = {}) {
   const raw = String(hAciklama || "").trim();
   // Eski detaylı metinleri sadeleştir (yeniden hesap gerekmez)
   if (/^ok\b/i.test(raw)) return "Ok";
-  if (/grup\s*d[ıi][sş][ıi]/i.test(raw) || eslesmeDurum === "atama_yok") return "Grup dışı";
+  if (/grup\s*d[ıi][sş][ıi]/i.test(raw)) return "Grup dışı";
+  if (eslesmeDurum === "atama_yok") {
+    return grupDisiSatiriMi(extra) ? "Grup dışı" : "Prim Hesaplama Dışı";
+  }
   if (raw) return raw;
   if (eslesmeDurum === "urun_yok") return "Ürün/marka eşleşmedi — prim hesaplanmadı";
   if (eslesmeDurum === "magaza_yok") return "Mağaza eşleşmedi — prim hesaplanmadı";
@@ -1772,9 +1780,7 @@ function toplanmisSatisGrupKova(marka, aks, soGrup, grupAdi) {
     .replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G")
     .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C")
     .trim();
-  const isTum = gAdi.includes("TUM MARKA")
-    || (gAdi.includes("PARFUM") && gAdi.includes("TUM"))
-    || gAdi === "PARFUM";
+  const isTum = gAdi.includes("TUM MARKA") || gAdi.includes("PARFUM");
   const isSingle = keys.length === 1 && keys[0] !== "PUIG";
 
   if (isSingle) {
@@ -1806,9 +1812,7 @@ function raporSatisGrupEtiketi(grupAdi, markalar) {
     .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C")
     .trim();
   const keys = grupAdindanMarkaAnahtarlari(grupAdi);
-  const tumHavuz = g.includes("TUM MARKA")
-    || (g.includes("PARFUM") && g.includes("TUM"))
-    || g === "PARFUM";
+  const tumHavuz = g.includes("TUM MARKA") || g.includes("PARFUM");
   if (tumHavuz) return "PARFÜM";
   if (keys.length === 1) {
     if (keys[0] === "PUIG") return "PARFÜM";
@@ -1830,11 +1834,11 @@ function aksTemizle(aks) {
     .trim();
 }
 
-/** Excel SATIŞ TÜRÜ: grubuna giren satış vs grup dışı. */
-function satisTuruHesapla(eslesmeDurum, hesapId) {
-  if (eslesmeDurum === "atama_yok") return "Grup Dışı";
+/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ Puig uzmanında Givenchy / Hermes / DG parfüm. */
+function satisTuruHesapla(eslesmeDurum, hesapId, extra = {}) {
   if (hesapId != null) return "Grup Satış";
-  if (["urun_yok", "magaza_yok", "uzman_yok"].includes(eslesmeDurum)) {
+  if (eslesmeDurum === "atama_yok" && grupDisiSatiriMi(extra)) return "Grup Dışı";
+  if (["urun_yok", "magaza_yok", "uzman_yok", "atama_yok"].includes(eslesmeDurum)) {
     return "Prim Hesaplama Dışı";
   }
   return "Prim Hesaplama Dışı";
@@ -1875,6 +1879,35 @@ async function loadNoktaUzmanSayisiMap(donemId) {
     }
   }
   return out;
+}
+
+async function loadParfumUzmanSayisiMap(donemId) {
+  const [rows] = await pool.query(
+    `SELECT magaza_id, uzman_id, grup_adi FROM uzman_atama WHERE donem_id=?`,
+    [donemId]
+  );
+  return parfumUzmanSayisiHaritasi(rows);
+}
+
+function applyParfumUzmanSayisi(rows, parfumMap) {
+  for (const r of rows) {
+    if (r.magaza_id != null && parfumMap.has(r.magaza_id)) {
+      r.parfum_uzman_sayisi = parfumMap.get(r.magaza_id);
+    } else {
+      r.parfum_uzman_sayisi = 0;
+    }
+  }
+  return rows;
+}
+
+function grupDisiExtra(r, aks) {
+  return {
+    primGrup: r.prim_grup,
+    marka: r.marka,
+    aks,
+    markaGrup: r.sellout_marka_grup,
+    parfumUzmanSayisi: r.parfum_uzman_sayisi,
+  };
 }
 
 function applyNoktaUzmanSayisi(rows, noktaMap) {
@@ -2110,6 +2143,7 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
   for (const [key, values] of Object.entries(filtre)) {
     const expr = SATIR_FILTRE_EXPR[key];
     if (!expr || !values?.length) continue;
+    if (key === "satis_turu") continue; // etiket JS'te (Puig/Giv parfüm kuralı)
     const ph = values.map(() => "?").join(",");
     if (key === "ad_soyad") {
       const norms = values.map((v) => normalizeName(v));
@@ -2195,49 +2229,7 @@ async function enrichSelloutByUniq(donemId, rows) {
   const need = rows.filter((r) => !Number(r.sellout_adet || 0));
   if (!need.length) return rows;
 
-  const normKod = (v) => String(v || "").trim().toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
-  const normBar = (v) => String(v || "").trim().replace(/\D/g, "");
-
-  const [uniqRows] = await pool.query(
-    `SELECT referans, barkod, stok_kodu, stok_barkod_1, uniq_kod, stok_list_uniq_kod FROM uniq_kod`
-  );
-  const codeToUniq = new Map();
-  const mapCode = (code, canon, asBar) => {
-    const u = normKod(canon);
-    if (!u) return;
-    if (asBar) {
-      const b = normBar(code);
-      if (b) codeToUniq.set(`b:${b}`, u);
-    } else {
-      const c = normKod(code);
-      if (c) codeToUniq.set(`c:${c}`, u);
-    }
-  };
-  for (const row of uniqRows) {
-    const canon = normKod(row.stok_list_uniq_kod) || normKod(row.uniq_kod) || normKod(row.referans);
-    if (!canon) continue;
-    mapCode(row.referans, canon, false);
-    mapCode(row.stok_kodu, canon, false);
-    mapCode(row.uniq_kod, canon, false);
-    mapCode(row.stok_list_uniq_kod, canon, false);
-    mapCode(row.barkod, canon, true);
-    mapCode(row.stok_barkod_1, canon, true);
-  }
-  // Excel: TOO EDPI NEW → Uniq DGIP1TO1L04
-  mapCode("DGI89664500999", "DGIP1TO1L04", false);
-  mapCode("8057971185702", "DGIP1TO1L04", true);
-  const canonOf = (ref, bar, urunUniq) => {
-    if (ref) {
-      const hit = codeToUniq.get(`c:${normKod(ref)}`);
-      if (hit) return hit;
-    }
-    if (bar) {
-      const hit = codeToUniq.get(`b:${normBar(bar)}`);
-      if (hit) return hit;
-    }
-    if (urunUniq) return normKod(urunUniq) || null;
-    return ref ? normKod(ref) : null;
-  };
+  const { canonOf } = await loadUniqBridge(pool);
 
   const [soAll] = await pool.query(
     `SELECT so.magaza_id, so.arcon_referans, so.arcon_barkod, so.adet, so.ciro_kdv_haric, u.uniq_kod AS urun_uniq
@@ -2323,7 +2315,7 @@ function primSatirMap(r) {
     uzman_toplam_satis: adet,
     magaza_toplam_satis: selloutAdet,
     kontrol: selloutAdet - adet,
-    rapor_aciklama: raporAciklamaUret(r.h_aciklama, r.eslesme_durum),
+    rapor_aciklama: raporAciklamaUret(r.h_aciklama, r.eslesme_durum, grupDisiExtra(r, aks)),
     adet,
     fiyat: r.fiyat != null ? Number(r.fiyat) : null,
     toplam: r.toplam != null ? Number(r.toplam) : null,
@@ -2335,7 +2327,7 @@ function primSatirMap(r) {
     prime_esas_tutar: primeEsas,
     ...primler,
     bayi: r.bayi || "",
-    satis_turu: satisTuruHesapla(r.eslesme_durum, r.hesap_id),
+    satis_turu: satisTuruHesapla(r.eslesme_durum, r.hesap_id, grupDisiExtra(r, aks)),
     nokta_uzman_sayisi: r.nokta_uzman_sayisi != null ? Number(r.nokta_uzman_sayisi) : null,
     eslesme_durum: r.eslesme_durum || "",
     hesap_id: r.hesap_id,
@@ -2343,6 +2335,30 @@ function primSatirMap(r) {
     alt_kanal: r.alt_kanal || "",
     bolum_markalar: bolumMarkalar,
   };
+}
+
+async function satirSatirlariHazirla(donemId, rows) {
+  await enrichSelloutByUniq(donemId, rows);
+  const [noktaMap, parfumMap] = await Promise.all([
+    loadNoktaUzmanSayisiMap(donemId),
+    loadParfumUzmanSayisiMap(donemId),
+  ]);
+  applyNoktaUzmanSayisi(rows, noktaMap);
+  applyParfumUzmanSayisi(rows, parfumMap);
+  return rows;
+}
+
+function primSatirlariniIsle(rows, { aciklama, kolonFiltre } = {}) {
+  let birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
+  if (aciklama === "Grup Dışı") {
+    birlesik = birlesik.filter((s) => s.satis_turu === "Grup Dışı");
+  }
+  const turFiltre = kolonFiltre && kolonFiltre.satis_turu;
+  if (turFiltre?.length) {
+    const set = new Set(turFiltre);
+    birlesik = birlesik.filter((s) => set.has(s.satis_turu));
+  }
+  return birlesik;
 }
 
 app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
@@ -2358,10 +2374,8 @@ app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
   const [rows] = await pool.query(selectSql, params);
-  await enrichSelloutByUniq(donemId, rows);
-  const noktaMap = await loadNoktaUzmanSayisiMap(donemId);
-  applyNoktaUzmanSayisi(rows, noktaMap);
-  const birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
+  await satirSatirlariHazirla(donemId, rows);
+  const birlesik = primSatirlariniIsle(rows, { aciklama, kolonFiltre });
   const sayim = birlesik.length;
   const offset = (sayfa - 1) * limit;
   const satirlar = birlesik.slice(offset, offset + limit);
@@ -2404,6 +2418,20 @@ app.get("/api/prim-raporu/:donemId/satirlar/degerler", wrap(async (req, res) => 
   const q = String(req.query.q || "").trim();
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
+
+  if (kolon === "satis_turu") {
+    const [ham] = await pool.query(selectSql, params);
+    await satirSatirlariHazirla(donemId, ham);
+    const birlesik = primSatirlariniIsle(ham, { aciklama, kolonFiltre });
+    const set = new Set(birlesik.map((s) => s.satis_turu).filter(Boolean));
+    let degerler = [...set].sort((a, b) => String(a).localeCompare(String(b), "tr"));
+    if (ara) {
+      const qn = ara.toLocaleLowerCase("tr-TR");
+      degerler = degerler.filter((d) => String(d).toLocaleLowerCase("tr-TR").includes(qn));
+    }
+    return res.json({ kolon, degerler: degerler.slice(0, 3000) });
+  }
+
   const fromIdx = selectSql.toUpperCase().indexOf("\n    FROM ");
   const fromWhere = fromIdx >= 0 ? selectSql.slice(fromIdx) : selectSql.slice(selectSql.toUpperCase().indexOf(" FROM "));
   const orderIdx = fromWhere.toUpperCase().lastIndexOf(" ORDER BY ");
@@ -2443,10 +2471,8 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
   const [rows] = await pool.query(selectSql, params);
-  await enrichSelloutByUniq(donemId, rows);
-  const noktaMap = await loadNoktaUzmanSayisiMap(donemId);
-  applyNoktaUzmanSayisi(rows, noktaMap);
-  const satirlar = primSatirlariBirlesir(rows.map(primSatirMap));
+  await satirSatirlariHazirla(donemId, rows);
+  const satirlar = primSatirlariniIsle(rows, { aciklama, kolonFiltre });
 
   const renkArgb = {
     mavi: "FFA4C2F4",
@@ -2974,7 +3000,12 @@ app.get("/api/satis-primi/:donemId/detay/:uzmanId/:magazaId", wrap(async (req, r
       return { kod: "ok", metin: r.hesap_aciklama || "Ok — prime esasa girdi" };
     }
     if (!(r.durum || "").startsWith("Tamamland")) return { kod: "iade", metin: "İade/iptal — durum \"Tamamlandı\" değil" };
-    if (r.eslesme_durum === "atama_yok") return { kod: "atama_yok", metin: "Uzmanın atamasına uygun marka değil ya da atama bulunamadı (Uzman-Mağaza-Grup)" };
+    if (r.eslesme_durum === "atama_yok") {
+      return {
+        kod: "atama_yok",
+        metin: "Grup dışı — Puig/Givenchy parfüm, 2+ parfüm uzmanlı mağazada uzmanın grubunda değil",
+      };
+    }
     if (r.eslesme_durum === "magaza_yok") return { kod: "magaza_yok", metin: "Mağaza adı standart mağaza listesinde bulunamadı" };
     if (r.eslesme_durum === "uzman_yok") return { kod: "uzman_yok", metin: "Uzman veritabanında yok" };
     if (r.eslesme_durum === "urun_yok" || !r.urun_id) return { kod: "urun_yok", metin: "Barkod / kod ile ürün çözümlenemedi (uniq_kod'da yok)" };

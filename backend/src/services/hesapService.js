@@ -26,6 +26,15 @@
 const pool = require("../db");
 const { normalizeName } = require("../util");
 const { loadProductResolver, resolveProduct } = require("./productService");
+const { loadUniqBridge } = require("./uniqBridge");
+const { relinkDonemBeyan } = require("./beyanRelink");
+const {
+  dfbPrimHaricMi,
+  puigUzmanGrubuMu,
+  puigUzmanSayisiHaritasi,
+  puigParfumMu,
+  parfumHavuzUrunuMu,
+} = require("./grupDisiKural");
 
 /**
  * Sell-out mükerrer modu:
@@ -53,18 +62,26 @@ const VARSAYILAN_GRUPLAR = {
   SISLEY: ["SISLEY"],
   LP: ["LA PRAIRIE", "LP"],
   "SENSAİ": ["SENSAI", "SENSAİ"],
+  STURM: ["DR.BARBARA STURM", "DR BARBARA STURM", "BARBARA STURM"],
 };
 
 /** Excel Group metninden marka anahtarları çıkar (Givenchy+Hermes+Dolce → GIV,HERMES,DG) */
 function grupAdindanMarkaAnahtarlari(grupAdi) {
   const g = normalizeName(grupAdi || "");
   if (!g) return [];
-  // Parfüm / tüm markalar → geniş parfüm havuzu (SISLEY'e düşmesin)
-  if (g.includes("TUM MARKA") || (g.includes("PARFUM") && g.includes("TUM"))) {
-    return [
+  // Parfüm Tüm / "Sisley + Parfüm" / Parfüm → geniş parfüm havuzu (Excel Satış Grup)
+  // "Sensai+Tüm Parfüm Markaları" gibi birleşik gruplarda SENSAI de kalmalı
+  if (g.includes("TUM MARKA") || g.includes("PARFUM")) {
+    // Narciso / Issey / Zadig Excel'de DFB GRUP — Prime Dahil Değil
+    const pool = [
       "DIOR", "PUIG", "HERMES", "DG", "GIV", "GIVENCHY",
-      "SISLEY", "LP", "NARCISO RODRIGUEZ", "ISSEY MIYAKE", "ZADIG&VOLTAIRE",
+      "SISLEY", "LP",
     ];
+    if (g.includes("SENSAI")) pool.push("SENSAI", "SENSAİ");
+    return pool;
+  }
+  if (g.includes("STURM") || (g.includes("BARBARA") && g.includes("DR"))) {
+    return ["DR.BARBARA STURM", "BARBARA STURM", "STURM", "BYREDO", "PENHALIGONS", "PENHALIGON"];
   }
   const out = new Set();
   const tokens = g.split(/[+\/&,]/).map((t) => t.trim()).filter(Boolean);
@@ -80,9 +97,7 @@ function grupAdindanMarkaAnahtarlari(grupAdi) {
     if (t.includes("SISLEY")) out.add("SISLEY");
     if (t.includes("PRAIRIE") || t === "LP") out.add("LP");
     if (t.includes("SENSAI")) out.add("SENSAI");
-    if (t.includes("NARCISO")) out.add("NARCISO RODRIGUEZ");
-    if (t.includes("ISSEY") || t.includes("MIYAKE")) out.add("ISSEY MIYAKE");
-    if (t.includes("ZADIG")) out.add("ZADIG&VOLTAIRE");
+    // Narciso / Issey / Zadig DFB — atama adında geçse bile prim yok
   }
   // Tam metin fallback (token yoksa)
   if (!out.size) {
@@ -95,9 +110,8 @@ function grupAdindanMarkaAnahtarlari(grupAdi) {
 }
 
 /**
- * Bölüm markalar listesini Excel Group ile birleştir.
- * Örn. bolum=HERMES+DG ama grup_adi=Givenchy+Hermes+Dolce → GIV de eklenir.
- * Böylece Givenchy satışı / hedefi de bu atamaya dahil olur.
+ * Marka filtresi Excel Prim Grup'tan gelir (Givenchy+Hermes+Dolce → GIV/HERMES/DG).
+ * Bölüm (TEK_UZMAN PUIG+…) oran/kural senaryosudur; Puig sızdırmaz.
  */
 function genisletMarkalar(markalarJson, grupAdi) {
   let keys = [];
@@ -107,21 +121,16 @@ function genisletMarkalar(markalarJson, grupAdi) {
     keys = [];
   }
   const ekstra = grupAdindanMarkaAnahtarlari(grupAdi);
-  const seen = new Set(keys.map((k) => normalizeName(k)));
-  for (const e of ekstra) {
-    if (!seen.has(normalizeName(e))) {
-      keys.push(e);
-      seen.add(normalizeName(e));
-    }
-  }
+  if (ekstra.length) return ekstra;
   return keys;
 }
 
 function markaGrubunda(markalarJson, marka, markaGrupMap) {
-  if (!markalarJson) return true; // grup tanımsızsa tüm markalar dahil
-  const keys = Array.isArray(markalarJson) ? markalarJson : JSON.parse(markalarJson);
   const m = normalizeName(marka || "");
   if (!m) return false;
+  if (dfbPrimHaricMi(m)) return false;
+  if (!markalarJson) return true; // grup tanımsızsa tüm markalar dahil
+  const keys = Array.isArray(markalarJson) ? markalarJson : JSON.parse(markalarJson);
   for (const key of keys) {
     const k = normalizeName(key);
     if (m === k || m.includes(k)) return true;
@@ -145,6 +154,7 @@ async function hesapla(donemId, options = {}) {
   const mukerrerMod = resolveMukerrerMod(options);
   try {
     if (ownsConnection) await conn.beginTransaction();
+    await relinkDonemBeyan(conn, donemId);
     await conn.query("DELETE FROM prim_hesap_satir WHERE donem_id=?", [donemId]);
     await conn.query("DELETE FROM prim_ozet WHERE donem_id=?", [donemId]);
 
@@ -200,53 +210,7 @@ async function hesapla(donemId, options = {}) {
     const soBarMap = new Map();    // magaza × arcon_barkod
     const soUniqMap = new Map();   // magaza × kanonik uniq (çoklu barkod fallback havuzu)
     const soUzmanKalan = new Map();
-    const normKod = (v) => String(v || "").trim().toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
-    const normBar = (v) => String(v || "").trim().replace(/\D/g, "");
-
-    const [uniqRows] = await conn.query(
-      `SELECT referans, barkod, stok_kodu, stok_barkod_1, uniq_kod, stok_list_uniq_kod
-       FROM uniq_kod`
-    );
-    const codeToUniq = new Map();
-    function mapCodeToUniq(code, canon, asBarkod) {
-      const u = normKod(canon);
-      if (!u) return;
-      if (asBarkod) {
-        const b = normBar(code);
-        if (b) codeToUniq.set(`b:${b}`, u);
-      } else {
-        const c = normKod(code);
-        if (c) codeToUniq.set(`c:${c}`, u);
-      }
-    }
-    for (const row of uniqRows) {
-      // Excel: uniq boşsa Uniq kolonu çoğu zaman referansın kendisi
-      const canon = normKod(row.stok_list_uniq_kod) || normKod(row.uniq_kod) || normKod(row.referans);
-      if (!canon) continue;
-      mapCodeToUniq(row.referans, canon, false);
-      mapCodeToUniq(row.stok_kodu, canon, false);
-      mapCodeToUniq(row.uniq_kod, canon, false);
-      mapCodeToUniq(row.stok_list_uniq_kod, canon, false);
-      mapCodeToUniq(row.barkod, canon, true);
-      mapCodeToUniq(row.stok_barkod_1, canon, true);
-    }
-    // Excel Prim Çalışma: TOO EDPI NEW (DGI89664500999) → Uniq DGIP1TO1L04
-    // (bizde yanlışlıkla DGB000000244'e bağlıydı; Excel ile hizala)
-    mapCodeToUniq("DGI89664500999", "DGIP1TO1L04", false);
-    mapCodeToUniq("8057971185702", "DGIP1TO1L04", true);
-
-    function canonUniq(ref, bar, urunUniq) {
-      if (ref) {
-        const hit = codeToUniq.get(`c:${normKod(ref)}`);
-        if (hit) return hit;
-      }
-      if (bar) {
-        const hit = codeToUniq.get(`b:${normBar(bar)}`);
-        if (hit) return hit;
-      }
-      if (urunUniq) return normKod(urunUniq) || null;
-      return ref ? normKod(ref) : null;
-    }
+    const { canonOf: canonUniq, normKod, normBar } = await loadUniqBridge(conn);
 
     function addSoKayit(map, key, adet, ciro, marka) {
       const mevcut = map.get(key);
@@ -269,6 +233,7 @@ async function hesapla(donemId, options = {}) {
           ciro: so.ciro,
           marka: so.marka,
           kalan: so.adet,
+          ilkSatir: true,
         };
         soUzmanKalan.set(key, kopya);
       }
@@ -300,10 +265,10 @@ async function hesapla(donemId, options = {}) {
       if (r.urun_id) {
         addSoKayit(soMap, `${r.magaza_id}|${r.urun_id}`, adet, ciro, marka);
       }
-      // Uniq havuzu: yalnızca sell-out satırının kendi kanonu (beyan alias'ı burada yok)
-      const canon = canonUniq(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
-      if (canon) {
-        addSoKayit(soUniqMap, `${r.magaza_id}|${canon}`, adet, ciro, marka);
+      // Uniq havuzu: Excel Uniq Kod = urun.uniq_kod (köprü alias'ı birleştirmez)
+      const poolUniq = r.urun_uniq ? normKod(r.urun_uniq) : canonUniq(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
+      if (poolUniq) {
+        addSoKayit(soUniqMap, `${r.magaza_id}|${poolUniq}`, adet, ciro, marka);
       }
     }
 
@@ -382,7 +347,7 @@ async function hesapla(donemId, options = {}) {
     //   bolumSec ve fallback'e göre kendi kararını verecek. Böylece Excel'deki
     //   "beyanda ne varsa görelim" mantığına yakın davranıyoruz.
     const [beyanlar] = await conn.query(
-      `SELECT b.*, u.marka AS urun_marka, u.uniq_kod AS urun_uniq FROM satis_beyan b
+      `SELECT b.*, u.marka AS urun_marka, u.uniq_kod AS urun_uniq, u.aks AS urun_aks FROM satis_beyan b
        LEFT JOIN urun u ON u.id=b.urun_id
        WHERE b.donem_id=? AND b.magaza_id IS NOT NULL
          AND (b.durum IS NULL OR b.durum LIKE 'Tamamland%')
@@ -396,13 +361,14 @@ async function hesapla(donemId, options = {}) {
       const match = resolveProduct(resolver, { barcode: b.barkod, reference: b.kod });
       if (match.status === "ok" && match.matches?.[0]?.marka) {
         b.urun_id = b.urun_id || match.productId;
+        if (!b.urun_aks) b.urun_aks = match.matches[0].aks || null;
         return match.matches[0].marka;
       }
       return null;
     }
 
     // Uzman-Mağaza-Grup Excel master: uzman yalnızca o dosyadaki mağaza(lar)da
-    // primlenir. Başka mağazada satış olsa bile grup dışı (Excel Prim Çalışma).
+    // primlenir. Başka mağazada satış olsa bile kapsam dışı kalır.
     const uzmanBolumler = new Map(); // uzman_id -> [atama_kaydı]
     for (const a of atamalar) {
       if (!uzmanBolumler.has(a.uzman_id)) uzmanBolumler.set(a.uzman_id, []);
@@ -415,54 +381,78 @@ async function hesapla(donemId, options = {}) {
       if (!atamaByUzmanMagaza.has(k)) atamaByUzmanMagaza.set(k, []);
       atamaByUzmanMagaza.get(k).push(a);
     }
+    const puigSayisiByMagaza = puigUzmanSayisiHaritasi(atamalar);
 
-    // Sadece bu uzman × bu Zeops mağazası ataması + ürün markası grubu uyarsa prim.
-    // Diğer mağazadaki atamayı buraya taşıma → grup dışı.
-    function bolumSec(uzmanId, magazaId, urunMarka) {
+    // Prim: mağazada ataması varsa ver. Grup dışı yalnız o noktanın sorumlu
+    // Puig uzmanlarını keser (2+ Puig): Givenchy / Hermes / DG parfüm.
+    // Tek uzmanlı yerde kesim yok. Atilla / Parfüm Tüm / Dior satışı primlenir.
+    // Narciso-Issey-Zadig DFB — Excel Prime Dahil Değil.
+    function bolumSec(uzmanId, magazaId, urunMarka, aks) {
       const dogrudanlar = atamaByUzmanMagaza.get(`${uzmanId}|${magazaId}`) || [];
+      if (!dogrudanlar.length) return null;
       for (const d of dogrudanlar) {
         if (markaGrubunda(d.markalar, urunMarka, markaGrupMap)) return d;
       }
-      return null;
+      if (dfbPrimHaricMi(urunMarka)) return null;
+      const puigAtama = dogrudanlar.find((d) => puigUzmanGrubuMu(d.grup_adi));
+      const puigSayisi = puigSayisiByMagaza.get(magazaId) || 0;
+      const soGrup = markaGrupMap.get(normalizeName(urunMarka));
+      if (
+        puigAtama
+        && puigSayisi >= 2
+        && !puigParfumMu(urunMarka, aks, soGrup)
+        && parfumHavuzUrunuMu(urunMarka, aks, soGrup)
+      ) {
+        return null;
+      }
+      return dogrudanlar[0];
+    }
+
+    // Excel havuz anahtarı = stok Uniq Kod (GVCP00000407 ≠ GVCP00000416; köprü alias birleştirmez)
+    function havuzAnahtar(b, canon) {
+      if (b.urun_uniq) return normKod(b.urun_uniq);
+      return canon || null;
     }
 
     function selloutEsle(b) {
       let so = null;
       let soKaynakKey = null;
       const canon = canonUniq(b.kod, b.barkod, b.urun_uniq);
-      if (canon) {
-        const uniqRef = soRefMap.get(`${b.magaza_id}|${canon}`);
-        if (uniqRef) {
-          so = uniqRef;
-          soKaynakKey = `uniq:${b.magaza_id}|${canon}`;
-        }
-      }
-      if (!so && canon) {
-        const uniqAlt = soUniqMap.get(`${b.magaza_id}|${canon}`);
-        if (uniqAlt) {
-          so = uniqAlt;
-          soKaynakKey = `uniq:${b.magaza_id}|${canon}`;
+      const pool = havuzAnahtar(b, canon);
+
+      if (pool) {
+        const uniqHit = soUniqMap.get(`${b.magaza_id}|${pool}`);
+        if (uniqHit) {
+          so = uniqHit;
+          soKaynakKey = `uniq:${b.magaza_id}|${pool}`;
         }
       }
       if (!so && b.kod) {
         const refAlt = soRefMap.get(`${b.magaza_id}|${normKod(b.kod)}`);
         if (refAlt) {
           so = refAlt;
-          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `ref:${b.magaza_id}|${normKod(b.kod)}`;
+          soKaynakKey = pool ? `uniq:${b.magaza_id}|${pool}` : `ref:${b.magaza_id}|${normKod(b.kod)}`;
         }
       }
       if (!so && b.barkod) {
         const barAlt = soBarMap.get(`${b.magaza_id}|${normBar(b.barkod)}`);
         if (barAlt) {
           so = barAlt;
-          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `bar:${b.magaza_id}|${normBar(b.barkod)}`;
+          soKaynakKey = pool ? `uniq:${b.magaza_id}|${pool}` : `bar:${b.magaza_id}|${normBar(b.barkod)}`;
+        }
+      }
+      if (!so && canon && canon !== pool) {
+        const canonHit = soUniqMap.get(`${b.magaza_id}|${canon}`);
+        if (canonHit) {
+          so = canonHit;
+          soKaynakKey = pool ? `uniq:${b.magaza_id}|${pool}` : `uniq:${b.magaza_id}|${canon}`;
         }
       }
       if (!so && b.urun_id) {
         const idAlt = soMap.get(`${b.magaza_id}|${b.urun_id}`);
         if (idAlt) {
           so = idAlt;
-          soKaynakKey = canon ? `uniq:${b.magaza_id}|${canon}` : `urun:${b.magaza_id}|${b.urun_id}`;
+          soKaynakKey = pool ? `uniq:${b.magaza_id}|${pool}` : `urun:${b.magaza_id}|${b.urun_id}`;
         }
       }
       if (!soKaynakKey) soKaynakKey = `x:${b.id}`;
@@ -472,11 +462,29 @@ async function hesapla(donemId, options = {}) {
       if (so && so.adet > 0) {
         birim = so.ciro / so.adet;
         const kullanilabilir = Math.max(0, so.kalan);
-        primAdet = Math.min(b.adet, kullanilabilir);
-        so.kalan -= primAdet;
-        if (primAdet === b.adet) aciklama = "Ok";
-        else if (primAdet > 0) aciklama = `Kısmi Ok — ${b.adet - primAdet} adet mükerrer (sell-out kalanı yetmedi)`;
-        else aciklama = `Mükerrer beyan — sell-out kalanı 0, prim verilmedi`;
+        const beyanAdet = Number(b.adet) || 0;
+        // Excel mükerrer:
+        // - Kalan 0 → Mükerrer
+        // - İlk satır tek seferde SO havuzunu aşıyorsa → Mükerrer
+        // - Sonraki satır kalanı aşıyorsa → kısmi Ok (Sibel MUD SOAP vb.)
+        if (kullanilabilir <= 0) {
+          primAdet = 0;
+          aciklama = "Mükerrer Giriş";
+        } else if (beyanAdet > kullanilabilir) {
+          if (so.ilkSatir && beyanAdet > so.adet) {
+            primAdet = 0;
+            aciklama = "Mükerrer Giriş";
+          } else {
+            primAdet = kullanilabilir;
+            so.kalan = 0;
+            aciklama = "Ok";
+          }
+        } else {
+          primAdet = beyanAdet;
+          so.kalan -= primAdet;
+          aciklama = "Ok";
+        }
+        if (so.ilkSatir) so.ilkSatir = false;
       } else {
         aciklama = "Sell-out kaydı yok — prim hesaplanmadı";
       }
@@ -500,7 +508,7 @@ async function hesapla(donemId, options = {}) {
         beyanDurumGuncelle.push({ id: b.id, durum: "urun_yok" });
         continue;
       }
-      const atama = bolumSec(b.uzman_id, b.magaza_id, urunMarka);
+      const atama = bolumSec(b.uzman_id, b.magaza_id, urunMarka, b.urun_aks);
       const isDiorUrun = normalizeName(urunMarka).includes("DIOR");
       const isSevilMag = normalizeName(magazaBayi.get(b.magaza_id) || "").includes("SEVIL");
       const uzmaninAtamasiVar = (uzmanBolumler.get(b.uzman_id) || []).length > 0;
@@ -533,6 +541,9 @@ async function hesapla(donemId, options = {}) {
       }
       ozetMap.get(key).primeEsas += primeEsas;
       ozetMap.get(key).adet += primAdet;
+      if (b.eslesme_durum === "atama_yok") {
+        beyanDurumGuncelle.push({ id: b.id, durum: "ok" });
+      }
     }
 
     // Aynı sonuç: eslesme_durum güncellemesi — N tekil UPDATE yerine batch
@@ -612,7 +623,7 @@ async function hesapla(donemId, options = {}) {
       // Sevil + DIOR sıralama → Excel M/O kolonları (Parfüm Tüm VEYA grupta DIOR olmasa bile)
       const gNormAtama = normalizeName(a.grup_adi || "");
       const isTumParfumAtama = gNormAtama.includes("TUM MARKA")
-        || (gNormAtama.includes("PARFUM") && gNormAtama.includes("TUM"));
+        || gNormAtama.includes("PARFUM");
       const isSevilAtama = normalizeName(magazaBayi.get(a.magaza_id) || a.bayi || "").includes("SEVIL");
       const diorMagSira = isSevilAtama
         ? Number(siraMap.get(`${a.magaza_id}|GENEL|DIOR`))

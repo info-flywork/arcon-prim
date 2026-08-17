@@ -1,4 +1,5 @@
 const pool = require("../db");
+const { relinkDonemBeyan } = require("./beyanRelink");
 
 const INVALID_VALUES = new Set(["", "0", "0,00", "#N/A", "N/A", "TBC", "-", "NULL"]);
 
@@ -68,7 +69,7 @@ async function loadProductResolver(conn = pool) {
   // ürünler urun_id=null kalıp yanlışlıkla "Atama yok / Grup Dışı" görünüyor.
   const [rows] = await conn.query(`
     SELECT k.id AS identifier_id, k.urun_id, k.tip, k.deger_normalize,
-           u.uniq_kod, u.marka, u.urun_adi, u.durum
+           u.uniq_kod, u.marka, u.urun_adi, u.aks, u.durum
     FROM urun_kimlik k
     JOIN urun u ON u.id=k.urun_id
     WHERE k.aktif=1 AND u.durum IN ('aktif','inceleme')
@@ -295,6 +296,7 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
     // Uzman-mağaza Excel master'a sadık kal: Zeops'ta başka mağazada satış
     // görünce atama kopyalama KAPALI (Bozdağ Akasya + Marmara Forum bug'ı).
     const atamaEklenen = 0;
+    await relinkDonemBeyan(conn, donemId);
     if (ownsConnection) await conn.commit();
 
     const resolver = await loadProductResolver(conn);

@@ -8,7 +8,7 @@
 //   5. Uzman-Mağaza-Grup     -> magaza, uzman, uzman_atama
 const XLSX = require("xlsx");
 const pool = require("../db");
-const { normalizeName, normalizeStore, parseTrNumber, parseDate, resolveUzmanId } = require("../util");
+const { normalizeName, normalizeStore, parseTrNumber, parseDate, resolveUzmanId, resolveStoreId } = require("../util");
 const {
   cleanRaw,
   normalizeCanonicalCode,
@@ -16,6 +16,7 @@ const {
   loadProductResolver,
   resolveProduct,
 } = require("./productService");
+const { relinkDonemBeyan } = require("./beyanRelink");
 
 // Bir sekmede beklenen başlıkların geçtiği satırı bulur (ilk 50 satır taranır).
 // Gerçek dosyalarda başlık her zaman 1. satırda değildir: boş satırlar,
@@ -156,7 +157,7 @@ async function loadStoreMaps(conn) {
   const [aliases] = await conn.query("SELECT alias, magaza_id FROM magaza_alias");
   const map = new Map();
   for (const s of stores) map.set(normalizeStore(s.prim_magaza), s.id);
-  for (const a of aliases) map.set(a.alias, a.magaza_id);
+  for (const a of aliases) map.set(normalizeStore(a.alias) || String(a.alias || "").trim(), a.magaza_id);
   return map;
 }
 
@@ -475,10 +476,14 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
 
     const yeniUzman = yeniUzmanSet.size;
     const yeniMagaza = yeniMagazaSet.size;
+    const relink = await relinkDonemBeyan(conn, donemId);
     const ozet = [
       `${ok} atama`,
       yeniUzman ? `${yeniUzman} yeni uzman` : null,
       yeniMagaza ? `${yeniMagaza} yeni mağaza` : null,
+      relink.baglanan ? `${relink.baglanan} Zeops satırı uzmana bağlandı` : null,
+      relink.beyanBaglanan ? `${relink.beyanBaglanan} Zeops mağaza bağlandı` : null,
+      relink.selloutBaglanan ? `${relink.selloutBaglanan} sell-out mağaza bağlandı` : null,
       err ? `${err} sorunlu` : null,
     ].filter(Boolean).join(" · ");
     await conn.query(
@@ -528,7 +533,7 @@ async function importZeops(buffer, donemId, dosyaAdi) {
       const barkod = cleanRaw(pick(row, "Barkod")) || null;
       const kod = pick(row, "Kod");
       const uzmanId = resolveUzmanId(uzmanMap, uzmanHam);
-      const magazaId = storeMap.get(normalizeStore(magazaHam)) || null;
+      const magazaId = resolveStoreId(storeMap, magazaHam) || null;
       const productMatch = resolveProduct(productResolver, { barcode: barkod, reference: kod });
       const productId = productMatch.productId || null;
       const uniqId = productId ? legacyByProduct.get(Number(productId)) || null : null;
@@ -611,7 +616,7 @@ async function importSellout(buffer, donemId, dosyaAdi) {
       const magazaHam = pick(row, "Prim Mağaza", "Prim Magaza", "Mağaza", "Magaza");
       const barkod = cleanRaw(pick(row, "Arcon Barkod", "Barkod")) || null;
       const ref = pick(row, "Arcon Referans", "Referans");
-      const magazaId = storeMap.get(normalizeStore(magazaHam)) || null;
+      const magazaId = resolveStoreId(storeMap, magazaHam) || null;
       const productMatch = resolveProduct(productResolver, { barcode: barkod, reference: ref });
       const productId = productMatch.productId || null;
       const uniqId = productId ? legacyByProduct.get(Number(productId)) || null : null;
@@ -715,7 +720,7 @@ async function importHedef(buffer, donemId, dosyaAdi) {
       if (!magazaHam || !marka) { err++; continue; }
       // 0/boş hedef kaydedilmez: 0 hedef "hedef tuttu" sayılıp haksız prim doğurur
       if (tutar <= 0) { err++; continue; }
-      const magazaId = storeMap.get(normalizeStore(magazaHam)) || null;
+      const magazaId = resolveStoreId(storeMap, magazaHam) || null;
       await conn.query(
         `INSERT INTO hedef (donem_id, magaza_id, magaza_ham, marka, hedef_ciro)
          VALUES (?,?,?,?,?)
@@ -758,7 +763,7 @@ async function importSiralama(buffer, donemId, dosyaAdi) {
       const marka = pick(row, "MARKA", "Marka");
       const sira = Math.round(parseTrNumber(pick(row, "SIRALAMA", "Sira")));
       if (!magazaHam || !marka || !sira) { err++; continue; }
-      const magazaId = storeMap.get(normalizeStore(magazaHam)) || null;
+      const magazaId = resolveStoreId(storeMap, magazaHam) || null;
       await conn.query(
         `INSERT INTO siralama (donem_id, magaza_id, magaza_ham, cesit, marka, sira)
          VALUES (?,?,?,?,?,?)
