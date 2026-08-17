@@ -137,6 +137,7 @@ export default function PrimRaporu() {
   const [acilacakKolon, setAcilacakKolon] = useState(null);
   const [acilacakAra, setAcilacakAra] = useState("");
   const [hesapDurum, setHesapDurum] = useState(null);
+  const [indiriliyor, setIndiriliyor] = useState(false);
 
   useEffect(() => {
     if (gorunum !== "toplanmis" || !donem) return;
@@ -255,19 +256,56 @@ export default function PrimRaporu() {
     [donem, aciklama, arama, kolonFiltre]
   );
 
+  async function excelIndir(url, dosyaAdi) {
+    setIndiriliyor(true);
+    setHata(null);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        let mesaj = "Excel indirilemedi";
+        try {
+          const d = await res.json();
+          if (d?.hata) mesaj = d.hata;
+        } catch {
+          mesaj = res.status === 504
+            ? "Sunucu zaman aşımı — nginx proxy süresini artırın veya tekrar deneyin"
+            : `Excel indirilemedi (HTTP ${res.status})`;
+        }
+        throw new Error(mesaj);
+      }
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = dosyaAdi || "Prim_Calisma.xlsx";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 5000);
+    } catch (e) {
+      setHata(e.message || "Excel indirilemedi");
+    } finally {
+      setIndiriliyor(false);
+    }
+  }
+
   function pivotIndir() {
-    if (!donem) return;
-    window.location.href = `/api/prim-raporu/${donem}/xlsx`;
+    if (!donem || indiriliyor) return;
+    excelIndir(`/api/prim-raporu/${donem}/xlsx`, `Prim_Hesaplama_${donemAd || donem}.xlsx`);
   }
 
   function satirIndir() {
-    if (!donem) return;
+    if (!donem || indiriliyor) return;
     const qs = new URLSearchParams();
     if (arama) qs.set("q", arama);
     if (aciklama) qs.set("aciklama", aciklama);
     if (filtreAktifMi(kolonFiltre)) qs.set("filtre", JSON.stringify(kolonFiltre));
     const s = qs.toString();
-    window.location.href = `/api/prim-raporu/${donem}/satirlar/indir${s ? `?${s}` : ""}`;
+    excelIndir(
+      `/api/prim-raporu/${donem}/satirlar/indir${s ? `?${s}` : ""}`,
+      `Prim_Calisma_${donemAd || donem}.xlsx`
+    );
   }
 
   function araGonder(e) {
@@ -302,7 +340,7 @@ export default function PrimRaporu() {
     setAramaInput("");
   }
 
-  const donemAd = satirVeri?.donem_ad;
+  const donemAd = satirVeri?.donem_ad || veri?.donem_ad;
   const satirKolonlar = (satirVeri?.kolonlar || []).map((k) => ({
     ...k,
     sayisal: SAYISAL_SATIR.has(k.key),
@@ -353,8 +391,13 @@ export default function PrimRaporu() {
       <div className="rapor-araclar">
         <DonemSec value={donem} onChange={donemDegistir} />
         {gorunum === "toplanmis" && veri?.satirlar?.length > 0 && (
-          <button className="btn rapor-indir" onClick={pivotIndir}>
-            <span>↓</span> Excel olarak indir
+          <button
+            type="button"
+            className="btn rapor-indir"
+            onClick={pivotIndir}
+            disabled={indiriliyor}
+          >
+            <span>↓</span> {indiriliyor ? "İndiriliyor…" : "Excel olarak indir"}
           </button>
         )}
         {gorunum === "satirlar" && (
@@ -385,12 +428,17 @@ export default function PrimRaporu() {
                   Temizle
                 </button>
               )}
-              {satirVeri?.toplam > 0 && (
-                <button type="button" className="btn rapor-indir" onClick={satirIndir}>
-                  <span>↓</span> Excel olarak indir
-                </button>
-              )}
             </form>
+            {satirVeri?.toplam > 0 && (
+              <button
+                type="button"
+                className="btn rapor-indir"
+                onClick={satirIndir}
+                disabled={indiriliyor}
+              >
+                <span>↓</span> {indiriliyor ? "İndiriliyor…" : "Excel olarak indir"}
+              </button>
+            )}
           </div>
         )}
       </div>

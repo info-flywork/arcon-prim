@@ -1970,33 +1970,47 @@ function satirSatisPrimleri(primeEsas, meta) {
  * Excel Prim Çalışma gibi: her Zeops beyanı ayrı satır (birleştirme yok).
  * Uzman Toplam Satış / Kontrol yine uzman × mağaza × ürün üzerinden hesaplanır.
  */
+function urunAnahtarFromRow(t) {
+  if (t.barkod) return `b:${t.barkod}`;
+  if (t.uniq_kod) return `q:${t.uniq_kod}`;
+  if (t.kod) return `k:${t.kod}`;
+  if (t.urun_id) return `u:${t.urun_id}`;
+  return `e:${t.etiket || ""}`;
+}
+
+function uzmanMagazaUrunKey(t) {
+  return `${t.uzman_id || t.ad_soyad}|${t.magaza_id || t.magaza_ham || ""}|${urunAnahtarFromRow(t)}`;
+}
+
+function buildUzmanUrunToplamMap(rows) {
+  const map = new Map();
+  for (const t of rows || []) {
+    const uk = uzmanMagazaUrunKey(t);
+    map.set(uk, (map.get(uk) || 0) + Number(t.adet || 0));
+  }
+  return map;
+}
+
+function applyUzmanUrunToplam(satir, uzmanUrunToplam) {
+  const uk = uzmanMagazaUrunKey(satir);
+  satir.uzman_toplam_satis = uzmanUrunToplam.get(uk) || Number(satir.adet || 0);
+  satir.magaza_toplam_satis = Number(satir.sellout_adet || 0);
+  satir.kontrol = satir.magaza_toplam_satis - satir.uzman_toplam_satis;
+}
+
+function primSatirExportFiltrePass(s, aciklama, kolonFiltre) {
+  if (aciklama === "Grup Dışı" && s.satis_turu !== "Grup Dışı") return false;
+  const turFiltre = kolonFiltre && kolonFiltre.satis_turu;
+  if (turFiltre?.length && !turFiltre.includes(s.satis_turu)) return false;
+  return true;
+}
+
 function primSatirlariBirlesir(satirlar) {
   const sirali = satirlar.map((s) => ({ ...s }));
-
-  // Uzman × mağaza × ürün bazında toplam adet (ziyaretler / mükerrer satırlar arası)
-  const uzmanUrunToplam = new Map();
-  for (const t of sirali) {
-    const urunAnahtar =
-      (t.barkod && `b:${t.barkod}`) ||
-      (t.uniq_kod && `q:${t.uniq_kod}`) ||
-      (t.kod && `k:${t.kod}`) ||
-      (t.urun_id && `u:${t.urun_id}`) ||
-      `e:${t.etiket || ""}`;
-    const uk = `${t.uzman_id || t.ad_soyad}|${t.magaza_id || t.magaza_ham || ""}|${urunAnahtar}`;
-    uzmanUrunToplam.set(uk, (uzmanUrunToplam.get(uk) || 0) + Number(t.adet || 0));
-  }
+  const uzmanUrunToplam = buildUzmanUrunToplamMap(sirali);
 
   for (const t of sirali) {
-    const urunAnahtar =
-      (t.barkod && `b:${t.barkod}`) ||
-      (t.uniq_kod && `q:${t.uniq_kod}`) ||
-      (t.kod && `k:${t.kod}`) ||
-      (t.urun_id && `u:${t.urun_id}`) ||
-      `e:${t.etiket || ""}`;
-    const uk = `${t.uzman_id || t.ad_soyad}|${t.magaza_id || t.magaza_ham || ""}|${urunAnahtar}`;
-    t.uzman_toplam_satis = uzmanUrunToplam.get(uk) || Number(t.adet || 0);
-    t.magaza_toplam_satis = Number(t.sellout_adet || 0);
-    t.kontrol = Number(t.magaza_toplam_satis || 0) - Number(t.uzman_toplam_satis || 0);
+    applyUzmanUrunToplam(t, uzmanUrunToplam);
     Object.assign(t, satirSatisPrimleri(t.prime_esas_tutar, {
       bayi: t.bayi,
       magaza: t.sellout_magaza || t.magaza_ham,
@@ -2217,7 +2231,43 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
     ${whereSql}
     ORDER BY b.id
   `;
-  return { hamSayim, selectSql, params };
+  return { hamSayim, selectSql, whereSql, params };
+}
+
+async function loadSelloutUniqMap(donemId) {
+  const { canonOf } = await loadUniqBridge(pool);
+  const [soAll] = await pool.query(
+    `SELECT so.magaza_id, so.arcon_referans, so.arcon_barkod, so.adet, so.ciro_kdv_haric, u.uniq_kod AS urun_uniq
+     FROM sellout so
+     LEFT JOIN urun u ON u.id=so.urun_id
+     WHERE so.donem_id=? AND so.magaza_id IS NOT NULL`,
+    [donemId]
+  );
+  const soUniq = new Map();
+  for (const r of soAll) {
+    const canon = canonOf(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
+    if (!canon) continue;
+    const key = `${r.magaza_id}|${canon}`;
+    const cur = soUniq.get(key) || { adet: 0, ciro: 0 };
+    cur.adet += Number(r.adet) || 0;
+    cur.ciro += Number(r.ciro_kdv_haric) || 0;
+    soUniq.set(key, cur);
+  }
+  return { soUniq, canonOf };
+}
+
+function enrichRowsSelloutFromMap(rows, { soUniq, canonOf }) {
+  if (!rows?.length || !soUniq?.size) return rows;
+  for (const r of rows) {
+    if (Number(r.sellout_adet || 0) > 0) continue;
+    const canon = canonOf(r.kod, r.barkod, r.uniq_kod);
+    if (!canon || !r.magaza_id) continue;
+    const hit = soUniq.get(`${r.magaza_id}|${canon}`);
+    if (!hit || hit.adet <= 0) continue;
+    r.sellout_adet = hit.adet;
+    r.sellout_ciro = hit.ciro;
+  }
+  return rows;
 }
 
 /**
@@ -2228,36 +2278,8 @@ async function enrichSelloutByUniq(donemId, rows) {
   if (!rows?.length) return rows;
   const need = rows.filter((r) => !Number(r.sellout_adet || 0));
   if (!need.length) return rows;
-
-  const { canonOf } = await loadUniqBridge(pool);
-
-  const [soAll] = await pool.query(
-    `SELECT so.magaza_id, so.arcon_referans, so.arcon_barkod, so.adet, so.ciro_kdv_haric, u.uniq_kod AS urun_uniq
-     FROM sellout so
-     LEFT JOIN urun u ON u.id=so.urun_id
-     WHERE so.donem_id=? AND so.magaza_id IS NOT NULL`,
-    [donemId]
-  );
-  const soUniq = new Map(); // magaza|canon → {adet,ciro}
-  for (const r of soAll) {
-    const canon = canonOf(r.arcon_referans, r.arcon_barkod, r.urun_uniq);
-    if (!canon) continue;
-    const key = `${r.magaza_id}|${canon}`;
-    const cur = soUniq.get(key) || { adet: 0, ciro: 0 };
-    cur.adet += Number(r.adet) || 0;
-    cur.ciro += Number(r.ciro_kdv_haric) || 0;
-    soUniq.set(key, cur);
-  }
-
-  for (const r of need) {
-    const canon = canonOf(r.kod, r.barkod, r.uniq_kod);
-    if (!canon || !r.magaza_id) continue;
-    const hit = soUniq.get(`${r.magaza_id}|${canon}`);
-    if (!hit || hit.adet <= 0) continue;
-    r.sellout_adet = hit.adet;
-    r.sellout_ciro = hit.ciro;
-  }
-  return rows;
+  const ctx = await loadSelloutUniqMap(donemId);
+  return enrichRowsSelloutFromMap(rows, ctx);
 }
 
 function primSatirMap(r) {
@@ -2350,13 +2372,8 @@ async function satirSatirlariHazirla(donemId, rows) {
 
 function primSatirlariniIsle(rows, { aciklama, kolonFiltre } = {}) {
   let birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
-  if (aciklama === "Grup Dışı") {
-    birlesik = birlesik.filter((s) => s.satis_turu === "Grup Dışı");
-  }
-  const turFiltre = kolonFiltre && kolonFiltre.satis_turu;
-  if (turFiltre?.length) {
-    const set = new Set(turFiltre);
-    birlesik = birlesik.filter((s) => set.has(s.satis_turu));
+  if (aciklama || (kolonFiltre && kolonFiltre.satis_turu)) {
+    birlesik = birlesik.filter((s) => primSatirExportFiltrePass(s, aciklama, kolonFiltre));
   }
   return birlesik;
 }
@@ -2470,9 +2487,6 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı" });
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
-  const [rows] = await pool.query(selectSql, params);
-  await satirSatirlariHazirla(donemId, rows);
-  const satirlar = primSatirlariniIsle(rows, { aciklama, kolonFiltre });
 
   const renkArgb = {
     mavi: "FFA4C2F4",
@@ -2510,7 +2524,6 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     return null;
   }
 
-  // HTTP header ASCII olmalı — "Ağustos" Content-Disposition'ı kırıp 500 veriyordu
   const guvenliAd = normalizeName(donem.ad || "donem")
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "") || "donem";
@@ -2522,6 +2535,9 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     "Content-Disposition",
     `attachment; filename="Prim_Calisma_${guvenliAd}.xlsx"`
   );
+  res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Cache-Control", "no-store");
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
 
   const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true });
   const ws = wb.addWorksheet("Prim Çalışma", {
@@ -2548,7 +2564,22 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   });
   baslik.commit();
 
-  for (const s of satirlar) {
+  const [rows, noktaMap, parfumMap, selloutCtx] = await Promise.all([
+    pool.query(selectSql, params).then(([r]) => r),
+    loadNoktaUzmanSayisiMap(donemId),
+    loadParfumUzmanSayisiMap(donemId),
+    loadSelloutUniqMap(donemId),
+  ]);
+  const uzmanUrunToplam = buildUzmanUrunToplamMap(rows);
+  enrichRowsSelloutFromMap(rows, selloutCtx);
+  applyNoktaUzmanSayisi(rows, noktaMap);
+  applyParfumUzmanSayisi(rows, parfumMap);
+
+  for (const r of rows) {
+    const s = primSatirMap(r);
+    applyUzmanUrunToplam(s, uzmanUrunToplam);
+    if (!primSatirExportFiltrePass(s, aciklama, kolonFiltre)) continue;
+
     const degerler = PRIM_SATIR_KOLONLAR.map((k) => {
       const v = s[k.key];
       if (v == null || v === "") return "";
@@ -2557,25 +2588,24 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     });
     const row = ws.addRow(degerler);
     const dolgu = satirDolgu(s);
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const k = PRIM_SATIR_KOLONLAR[col - 1];
-      if (dolgu) {
+    if (dolgu) {
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dolgu } };
-      }
-      cell.font = { size: 10, name: "Calibri" };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFCCCCCC" } },
-        bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
-        left: { style: "thin", color: { argb: "FFCCCCCC" } },
-        right: { style: "thin", color: { argb: "FFCCCCCC" } },
-      };
-      if (k && sayiKolon.has(k.key)) {
-        cell.alignment = { horizontal: "right" };
-        if (paraKolon.has(k.key)) {
-          cell.numFmt = "#,##0.00";
+        const k = PRIM_SATIR_KOLONLAR[col - 1];
+        if (k && sayiKolon.has(k.key)) {
+          cell.alignment = { horizontal: "right" };
+          if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
         }
-      }
-    });
+      });
+    } else {
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        const k = PRIM_SATIR_KOLONLAR[col - 1];
+        if (k && sayiKolon.has(k.key)) {
+          cell.alignment = { horizontal: "right" };
+          if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
+        }
+      });
+    }
     row.commit();
   }
 
