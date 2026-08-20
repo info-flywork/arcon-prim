@@ -128,10 +128,52 @@ async function relinkBeyanUzman(conn, donemId) {
   return { baglanan };
 }
 
+async function relinkBeyanUrun(conn, donemId) {
+  const { loadProductResolver, resolveProductWithBridge } = require("./productService");
+  const { loadUniqBridge } = require("./uniqBridge");
+  const resolver = await loadProductResolver(conn);
+  const uniqBridge = await loadUniqBridge(conn);
+  const [assignmentRows] = await conn.query(
+    "SELECT uzman_id, magaza_id FROM uzman_atama WHERE donem_id=?",
+    [donemId]
+  );
+  const assignmentSet = new Set(assignmentRows.map((r) => `${r.uzman_id}|${r.magaza_id}`));
+
+  const [rows] = await conn.query(
+    `SELECT id, barkod, kod, magaza_id, uzman_id, urun_id, urun_kimlik_id,
+            eslesme_yontemi, eslesme_durum
+       FROM satis_beyan
+      WHERE donem_id=? AND (urun_id IS NULL OR eslesme_durum IN ('urun_yok','urun_cakisma'))`,
+    [donemId]
+  );
+  if (!rows.length) return { baglanan: 0 };
+
+  let baglanan = 0;
+  for (const row of rows) {
+    const match = await resolveProductWithBridge(
+      conn, resolver, { barcode: row.barkod, reference: row.kod }, uniqBridge,
+    );
+    if (match.status !== "ok") continue;
+    let eslesme = "ok";
+    if (!row.magaza_id) eslesme = "magaza_yok";
+    else if (!row.uzman_id) eslesme = "uzman_yok";
+    else if (!assignmentSet.has(`${row.uzman_id}|${row.magaza_id}`)) eslesme = "atama_yok";
+
+    await conn.query(
+      `UPDATE satis_beyan SET urun_id=?, urun_kimlik_id=?, eslesme_yontemi=?, eslesme_durum=?
+       WHERE id=?`,
+      [match.productId, match.identifierId || null, match.method || null, eslesme, row.id]
+    );
+    baglanan++;
+  }
+  return { baglanan };
+}
+
 async function relinkDonemBeyan(conn, donemId) {
   const mag = await relinkBeyanMagaza(conn, donemId);
   const uz = await relinkBeyanUzman(conn, donemId);
-  return { baglanan: uz.baglanan, ...mag };
+  const ur = await relinkBeyanUrun(conn, donemId);
+  return { baglanan: uz.baglanan, urunBaglanan: ur.baglanan, ...mag };
 }
 
-module.exports = { relinkBeyanUzman, relinkBeyanMagaza, relinkDonemBeyan };
+module.exports = { relinkBeyanUzman, relinkBeyanMagaza, relinkBeyanUrun, relinkDonemBeyan };

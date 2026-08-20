@@ -3,8 +3,11 @@
 //   Puig = Rabanne, Jean Paul Gaultier, Carolina Herrera
 //   HGD  = Hermes, Givenchy, Dolce
 // Tek uzmanlı mağazada kural yok — sattığına prim.
-// 2+ parfüm sorumlusu varsa karşı grubun parfümü Grup Dışı (prim yok).
-// Parfüm Tüm / Dior / Sensai / LP bu kesime girmez.
+// 2+ parfüm sorumlusu varsa:
+//   Puigci → kendi Puig'i dışında (HGD + Dior…) Grup Dışı
+//   Givenchy+Hermes+Dolce → kendi üçlüsü dışında (Puig + Dior…) Grup Dışı
+//   Tek Hermes / tek Givenchy / tek Dolce kesilmez (Dior/Puig prim)
+// Parfüm Tüm / Sensai / LP bu kesime girmez.
 // Narciso / Issey / Zadig DFB — Prime Dahil Değil.
 // =====================================================================
 const { normalizeName } = require("../util");
@@ -20,8 +23,6 @@ function aksParfumMu(aks) {
 
 function puigMarkaMi(marka, markaGrup) {
   const m = normalizeName(marka || "");
-  const g = normalizeName(markaGrup || "");
-  if (g === "PUIG" || g.startsWith("PUIG ")) return true;
   if (!m) return false;
   if (m.includes("NINA") && m.includes("RICCI")) return true;
   return PUIG_PARCALAR.some((p) => m.includes(p));
@@ -45,6 +46,12 @@ function dgMarkaMi(marka, markaGrup) {
   const g = normalizeName(markaGrup || "");
   if (g === "DG" || g.includes("DOLCE") || g.includes("GABBANA")) return true;
   return m.includes("DOLCE") || m.includes("GABBANA") || m.includes("D&G") || m === "DG";
+}
+
+function hgdMarkaMi(marka, markaGrup) {
+  return givenchyMarkaMi(marka, markaGrup)
+    || hermesMarkaMi(marka, markaGrup)
+    || dgMarkaMi(marka, markaGrup);
 }
 
 /** Puig ürünleri pratikte parfüm; AKS boşsa da parfüm sayılır. */
@@ -181,9 +188,9 @@ function parfumUzmanAtamasi(atamalar, uzmanId, magazaId) {
 
 /**
  * 2+ parfüm sorumlusu varsa:
- *   Puig uzmanı → Hermes/Givenchy/Dolce parfüm kesilir
- *   Givenchy+Hermes+Dolce grubu → Puig kesilir
- *   Tek Hermes / tek Givenchy / tek Dolce Puig satsa prim (kesilmez)
+ *   Puig uzmanı → kendi Puig markası değilse kesilir (HGD + Dior)
+ *   Givenchy+Hermes+Dolce → kendi üçlüsü değilse kesilir (Puig + Dior)
+ *   Tek Hermes / tek Givenchy / tek Dolce kesilmez
  * Tek uzmanlı yerde kesim yok.
  */
 function grupDisiSatiriMi({
@@ -196,6 +203,7 @@ function grupDisiSatiriMi({
 } = {}) {
   const n = Number(parfumUzmanSayisi ?? puigUzmanSayisi ?? 0);
   if (n < 2) return false;
+  if (dfbPrimHaricMi(marka)) return false;
   if (puigUzmanGrubuMu(primGrup)) return hgdParfumMu(marka, aks, markaGrup);
   if (hgdPuigKesilirGrubuMu(primGrup)) return puigParfumMu(marka, aks, markaGrup);
   return false;
@@ -205,6 +213,9 @@ module.exports = {
   aksParfumMu,
   puigMarkaMi,
   givenchyMarkaMi,
+  hermesMarkaMi,
+  dgMarkaMi,
+  hgdMarkaMi,
   puigParfumMu,
   givenchyParfumMu,
   hgdParfumMu,

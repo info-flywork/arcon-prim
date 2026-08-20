@@ -86,6 +86,7 @@ function mapCode(codeToUniq, code, canon, asBarkod) {
  */
 async function loadUniqBridge(conn) {
   const codeToUniq = new Map();
+  csvCache = null;
 
   try {
     const [kim] = await conn.query(`

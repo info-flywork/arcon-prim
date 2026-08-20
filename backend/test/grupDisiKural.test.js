@@ -21,6 +21,14 @@ test("Puig ürünü AKS boş olsa da parfüm sayılır", () => {
   assert.equal(puigParfumMu("DIOR", "PARFÜM"), false);
 });
 
+test("Puig kuralı yalnız ana Puig markalarında çalışır", () => {
+  const { puigMarkaMi } = require("../src/services/grupDisiKural");
+  assert.equal(puigMarkaMi("CAROLINA HERRERA", "PUIG"), true);
+  assert.equal(puigMarkaMi("JEAN PAUL GAULTIER", null), true);
+  assert.equal(puigMarkaMi("BYREDO", null), false);
+  assert.equal(puigMarkaMi("PENHALIGONS", "PUIG"), false);
+});
+
 test("Givenchy parfüm yalnızca AKS=PARFÜM iken", () => {
   assert.equal(givenchyParfumMu("GIVENCHY", "PARFÜM"), true);
   assert.equal(givenchyParfumMu("GIVENCHY", "MAKYAJ"), false);
@@ -85,6 +93,13 @@ test("mağaza parfüm uzman sayısı Puig + HGD; Dior/Sensai sayılmaz", () => {
 });
 
 test("2+ uzmanda Puig ↔ HGD karşılıklı kesilir; tek uzmanda kesim yok", () => {
+  assert.equal(grupDisiSatiriMi({
+    primGrup: "Carolina Herrera",
+    marka: "BYREDO",
+    aks: null,
+    markaGrup: "PUIG",
+    parfumUzmanSayisi: 2,
+  }), false, "CH uzmanı Byredo niche → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Puig",
     marka: "GIVENCHY",
@@ -156,7 +171,25 @@ test("2+ uzmanda Puig ↔ HGD karşılıklı kesilir; tek uzmanda kesim yok", ()
     marka: "DIOR",
     aks: "PARFÜM",
     parfumUzmanSayisi: 2,
-  }), false, "Dior kesilmez");
+  }), false, "Puigci Dior kesilmez");
+  assert.equal(grupDisiSatiriMi({
+    primGrup: "Givenchy+Hermes+Dolce",
+    marka: "DIOR",
+    aks: "PARFÜM",
+    parfumUzmanSayisi: 2,
+  }), false, "HGD kombin Dior kesilmez");
+  assert.equal(grupDisiSatiriMi({
+    primGrup: "Givenchy",
+    marka: "DIOR",
+    aks: "PARFÜM",
+    parfumUzmanSayisi: 2,
+  }), false, "tek Givenchy Dior satsa → prim");
+  assert.equal(grupDisiSatiriMi({
+    primGrup: "Givenchy+Hermes+Dolce",
+    marka: "DIOR",
+    aks: "PARFÜM",
+    parfumUzmanSayisi: 1,
+  }), false, "tek uzman HGD Dior → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Parfüm Tüm Markalar",
     marka: "RABANNE",

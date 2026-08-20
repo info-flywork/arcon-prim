@@ -1081,7 +1081,7 @@ app.get("/api/rapor/detay/:donemId/:uzmanId", wrap(async (req, res) => {
 }));
 
 // Mutabakat (Maviler) — satır bazlı Zeops ↔ Sell-out karşılaştırması
-// Filtreler: uzman, magaza, marka, durum (Ok / Kısmi Ok / Mükerrer / Mağazada Eşleşmeyen Satış)
+// Filtreler: uzman, magaza, marka, durum (Ok / Mükerrer / Mağazada Eşleşmeyen Satış)
 app.get("/api/mutabakat/:donemId", wrap(async (req, res) => {
   const { uzman, magaza, marka, durum, q } = req.query;
   const args = [req.params.donemId];
@@ -1091,7 +1091,6 @@ app.get("/api/mutabakat/:donemId", wrap(async (req, res) => {
   if (marka) { where += " AND u.marka = ?"; args.push(marka); }
   if (durum) {
     if (durum === "ok") where += " AND h.aciklama = 'Ok'";
-    else if (durum === "kismi") where += " AND h.aciklama LIKE 'Kısmi Ok%'";
     else if (durum === "mukerrer") where += " AND h.aciklama LIKE 'Mükerrer%'";
     else if (durum === "sellout_yok") where += " AND h.aciklama LIKE 'Sell-out%'";
   }
@@ -1151,7 +1150,6 @@ app.get("/api/mutabakat/:donemId", wrap(async (req, res) => {
   const [ozet] = await pool.query(
     `SELECT
        SUM(aciklama = 'Ok') AS ok_,
-       SUM(aciklama LIKE 'Kısmi Ok%') AS kismi,
        SUM(aciklama LIKE 'Mükerrer%') AS mukerrer,
        SUM(aciklama LIKE 'Sell-out%') AS sellout_yok,
        COUNT(*) AS toplam,
@@ -1216,7 +1214,7 @@ app.get("/api/mutabakat/:donemId/export", wrap(async (req, res) => {
 }));
 
 // Satış primi (sade mod) — mevcut motor / prim_ozet'e dokunmaz.
-// Sadece Zeops beyanlarının sell-out ile eşleşen "Ok / Kısmi Ok" kısmını
+// Sadece Zeops beyanlarının sell-out ile eşleşen (prim_adet > 0) kısmını
 // alır ve uzman × mağaza için %1 sabit oranıyla prim üretir.
 app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
   // Oran boşsa (veya 0 ise) bölüm bazlı satış primi (her uzmanın kendi bölümündeki
@@ -1243,7 +1241,6 @@ app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
        LEFT JOIN prim_kural k ON k.bolum_id = h.bolum_id AND k.kriter_key = 'satis_basi'
        WHERE h.donem_id = ?
          AND h.prim_adet > 0
-         AND (h.aciklama LIKE 'Ok%' OR h.aciklama LIKE 'Kısmi Ok%')
        GROUP BY uz.id, m.id, h.bolum_id
        ORDER BY uz.ad_soyad, m.prim_magaza`
     : `SELECT
@@ -1259,7 +1256,6 @@ app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
        JOIN magaza m ON m.id = h.magaza_id
        WHERE h.donem_id = ?
          AND h.prim_adet > 0
-         AND (h.aciklama LIKE 'Ok%' OR h.aciklama LIKE 'Kısmi Ok%')
        GROUP BY uz.id, m.id, h.bolum_id
        ORDER BY uz.ad_soyad, m.prim_magaza`;
 
@@ -1342,7 +1338,8 @@ async function primRaporuVerisi(donemId) {
   // Excel Satış Grup kırılımı: prim_hesap_satir → (uzman, magaza, bolum, satış_grup) ciro
   const [hesapSgRows] = await pool.query(
     `SELECT h.uzman_id, h.magaza_id, h.bolum_id,
-            u.marka, u.aks, a.grup_adi, SUM(h.prime_esas_tutar) AS esas
+            u.marka, u.aks, a.grup_adi,
+            SUM(CASE WHEN h.aciklama LIKE 'Mükerrer%' THEN 0 ELSE h.prime_esas_tutar END) AS esas
        FROM prim_hesap_satir h
        LEFT JOIN urun u ON u.id = h.urun_id
        LEFT JOIN uzman_atama a
@@ -1683,15 +1680,19 @@ const PRIM_SATIR_KOLONLAR = [
   { key: "magaza_toplam_satis", ad: "Mağaza Toplam Satış", renk: "sari" },
   { key: "kontrol", ad: "Kontrol", renk: "sari" },
   { key: "rapor_aciklama", ad: "Rapor Açıklama", renk: "sari" },
+  { key: "odenen_adet", ad: "Ödenen Adet", renk: "acik" },
+  { key: "prim_adet", ad: "Prim Hesaplanan Adet", renk: "yesil" },
   { key: "adet", ad: "Adet", renk: "acik" },
   { key: "fiyat", ad: "Fiyat", renk: "acik" },
   { key: "toplam", ad: "Toplam", renk: "acik" },
   { key: "satis_notlari", ad: "Satış Notları", renk: "acik" },
-  { key: "prim_adet", ad: "Prim Hesaplanan Adet", renk: "yesil" },
+  { key: "mukerrer_adet", ad: "Mükerrer Adet", renk: "yesil" },
+  { key: "prim_adet_net", ad: "Net Prim Adet", renk: "yesil" },
   { key: "sellout_adet", ad: "Sell-Out Adet", renk: "yesil" },
   { key: "magaza_kdv_haric_ciro", ad: "Mağaza KDV Hariç Ciro", renk: "yesil" },
   { key: "birim_ciro", ad: "Prime Esas Birim Ciro", renk: "yesil" },
   { key: "prime_esas_tutar", ad: "Prime Esas Toplam Tutar", renk: "yesil" },
+  { key: "prime_esas_tutar_net", ad: "Net Prime Esas Toplam Tutar", renk: "yesil" },
   { key: "prim_yuzde_1", ad: "Prim % 1", renk: "yesil" },
   { key: "sephora_sensai", ad: "Sephora Sensai + %1", renk: "yesil" },
   { key: "sephora_bagdat_beymen", ad: "Sephora Bağdat + Beymen + % 0,05", renk: "yesil" },
@@ -1711,19 +1712,15 @@ function tarihYaz(v) {
   return `${gg}.${aa}.${d.getFullYear()}`;
 }
 
+/** Excel Prim Çalışma — Rapor Açıklama yalnızca bu üç değer. Grup dışı Satış Türü'nde. */
 function raporAciklamaUret(hAciklama, eslesmeDurum, extra = {}) {
   const raw = String(hAciklama || "").trim();
-  // Eski detaylı metinleri sadeleştir (yeniden hesap gerekmez)
+  if (/eşleşmeyen|eslesmeyen|sell-out/i.test(raw)) return "Mağazada Eşleşmeyen Satış";
   if (/^ok\b/i.test(raw)) return "Ok";
-  if (/grup\s*d[ıi][sş][ıi]/i.test(raw)) return "Grup dışı";
-  if (eslesmeDurum === "atama_yok") {
-    return grupDisiSatiriMi(extra) ? "Grup dışı" : "Prim Hesaplama Dışı";
-  }
-  if (raw) return raw;
-  if (eslesmeDurum === "urun_yok") return "Ürün/marka eşleşmedi — prim hesaplanmadı";
-  if (eslesmeDurum === "magaza_yok") return "Mağaza eşleşmedi — prim hesaplanmadı";
-  if (eslesmeDurum === "uzman_yok") return "Uzman eşleşmedi — prim hesaplanmadı";
-  return "Hesap satırı yok";
+  if (/^kısmi ok/i.test(raw) || /[üu]kerrer/i.test(raw)) return "Mükerrer Giriş";
+  const so = Number(extra.selloutAdet ?? extra.sellout_adet ?? 0);
+  if (so > 0) return "Ok";
+  return "Mağazada Eşleşmeyen Satış";
 }
 
 /** Excel Satış Grup: PUIG/BPI gibi havuzlarda AKS; marka=grup markalarında marka adı. */
@@ -1834,13 +1831,15 @@ function aksTemizle(aks) {
     .trim();
 }
 
-/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ parfüm sorumlusunda karşı grup (Puig ↔ HGD). */
+/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ parfüm sorumlusunda Puig/HGD kombin kendi grubu dışındaki satış (karşı grup + Dior). */
 function satisTuruHesapla(eslesmeDurum, hesapId, extra = {}) {
-  if (hesapId != null) return "Grup Satış";
+  const acik = String(extra.aciklama || extra.hAciklama || "").toLocaleLowerCase("tr-TR");
+  if (acik.includes("eşleşmeyen") || acik.includes("eslesmeyen")) return "Prim Hesaplama Dışı";
   if (eslesmeDurum === "atama_yok" && grupDisiSatiriMi(extra)) return "Grup Dışı";
   if (["urun_yok", "magaza_yok", "uzman_yok", "atama_yok"].includes(eslesmeDurum)) {
     return "Prim Hesaplama Dışı";
   }
+  if (hesapId != null) return "Grup Satış";
   return "Prim Hesaplama Dışı";
 }
 
@@ -1971,15 +1970,15 @@ function satirSatisPrimleri(primeEsas, meta) {
  * Uzman Toplam Satış / Kontrol yine uzman × mağaza × ürün üzerinden hesaplanır.
  */
 function urunAnahtarFromRow(t) {
-  if (t.barkod) return `b:${t.barkod}`;
   if (t.uniq_kod) return `q:${t.uniq_kod}`;
   if (t.kod) return `k:${t.kod}`;
+  if (t.barkod) return `b:${t.barkod}`;
   if (t.urun_id) return `u:${t.urun_id}`;
   return `e:${t.etiket || ""}`;
 }
 
 function uzmanMagazaUrunKey(t) {
-  return `${t.uzman_id || t.ad_soyad}|${t.magaza_id || t.magaza_ham || ""}|${urunAnahtarFromRow(t)}`;
+  return `${t.uzman_id || t.ad_soyad}|${t.so_magaza_id || t.magaza_id || t.sellout_magaza || t.magaza_ham || ""}|${urunAnahtarFromRow(t)}`;
 }
 
 function buildUzmanUrunToplamMap(rows) {
@@ -2031,15 +2030,16 @@ const SATIR_FILTRE_EXPR = {
   prim_grup: "COALESCE(a.grup_adi, '')",
   durum: "COALESCE(b.durum, '')",
   magaza_ham: "COALESCE(b.magaza_ham, '')",
-  sellout_magaza: "COALESCE(m.prim_magaza, b.magaza_ham, '')",
+  sellout_magaza: "COALESCE(mso.prim_magaza, m.prim_magaza, b.magaza_ham, '')",
   barkod: "COALESCE(b.barkod, '')",
   kod: "COALESCE(b.kod, '')",
   etiket: "COALESCE(b.etiket, '')",
   marka: "COALESCE(ur.marka, '')",
   uniq_kod: "COALESCE(ur.uniq_kod, b.kod, '')",
   urun_adi: "COALESCE(ur.urun_adi, b.etiket, '')",
-  bayi: "COALESCE(m.bayi, '')",
+  bayi: "COALESCE(mso.bayi, m.bayi, '')",
   satis_turu: `CASE
+    WHEN h.aciklama LIKE '%Eşleşmeyen%' OR h.aciklama LIKE '%eslesmeyen%' THEN 'Prim Hesaplama Dışı'
     WHEN b.eslesme_durum='atama_yok' THEN 'Grup Dışı'
     WHEN h.id IS NOT NULL THEN 'Grup Satış'
     ELSE 'Prim Hesaplama Dışı'
@@ -2076,20 +2076,23 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
   // Sell-out SQL: urun_id → barkod → referans; uniq eşlemesi satır sonrası JS'te (çok barkodlu ürün)
   const fromJoin = `
     FROM satis_beyan b
-    LEFT JOIN prim_hesap_satir h ON h.beyan_id=b.id
+    LEFT JOIN prim_hesap_satir h ON h.beyan_id=b.id AND h.donem_id=b.donem_id
     LEFT JOIN uzman u ON u.id=b.uzman_id
     LEFT JOIN magaza m ON m.id=b.magaza_id
+    LEFT JOIN magaza mso ON mso.id=COALESCE(h.magaza_id, b.magaza_id)
     LEFT JOIN urun_kimlik kbar
       ON kbar.aktif=1 AND kbar.tip='barkod' AND kbar.deger_normalize=b.barkod
     LEFT JOIN urun_kimlik kref
       ON kref.aktif=1 AND kref.tip='referans' AND kref.deger_normalize=b.kod
     LEFT JOIN urun ur ON ur.id=COALESCE(b.urun_id, kbar.urun_id, kref.urun_id)
     LEFT JOIN uzman_atama a
-      ON a.donem_id=b.donem_id AND a.uzman_id=b.uzman_id AND a.magaza_id=b.magaza_id
+      ON a.donem_id=b.donem_id AND a.uzman_id=b.uzman_id
+     AND a.magaza_id=COALESCE(h.magaza_id, b.magaza_id)
      AND a.bolum_id = COALESCE(
        h.bolum_id,
        (SELECT MIN(a2.bolum_id) FROM uzman_atama a2
-         WHERE a2.donem_id=b.donem_id AND a2.uzman_id=b.uzman_id AND a2.magaza_id=b.magaza_id)
+         WHERE a2.donem_id=b.donem_id AND a2.uzman_id=b.uzman_id
+           AND a2.magaza_id=COALESCE(h.magaza_id, b.magaza_id))
      )
     LEFT JOIN prim_bolum pb ON pb.id=COALESCE(h.bolum_id, a.bolum_id)
     LEFT JOIN (
@@ -2103,20 +2106,20 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
         FROM sellout
        WHERE donem_id=? AND urun_id IS NOT NULL
        GROUP BY magaza_id, urun_id
-    ) so_u ON so_u.magaza_id=b.magaza_id AND so_u.urun_id=ur.id
+    ) so_u ON so_u.magaza_id=COALESCE(h.magaza_id, b.magaza_id) AND so_u.urun_id=ur.id
     LEFT JOIN (
       SELECT magaza_id, arcon_barkod, SUM(adet) AS adet, SUM(ciro_kdv_haric) AS ciro
         FROM sellout
        WHERE donem_id=? AND arcon_barkod IS NOT NULL AND arcon_barkod<>''
        GROUP BY magaza_id, arcon_barkod
-    ) so_b ON so_b.magaza_id=b.magaza_id AND so_b.arcon_barkod=b.barkod
+    ) so_b ON so_b.magaza_id=COALESCE(h.magaza_id, b.magaza_id) AND so_b.arcon_barkod=b.barkod
     LEFT JOIN (
       SELECT magaza_id, UPPER(TRIM(arcon_referans)) AS ref_n,
              SUM(adet) AS adet, SUM(ciro_kdv_haric) AS ciro
         FROM sellout
        WHERE donem_id=? AND arcon_referans IS NOT NULL AND arcon_referans<>''
        GROUP BY magaza_id, UPPER(TRIM(arcon_referans))
-    ) so_r ON so_r.magaza_id=b.magaza_id AND so_r.ref_n=UPPER(TRIM(COALESCE(b.kod, '')))
+    ) so_r ON so_r.magaza_id=COALESCE(h.magaza_id, b.magaza_id) AND so_r.ref_n=UPPER(TRIM(COALESCE(b.kod, '')))
   `;
 
   if (q) {
@@ -2139,19 +2142,16 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
     params.push(likeNorm, like, like, like, like, like, like, like, like, like, like);
   }
   if (aciklama === "Ok") {
-    where += ` AND h.aciklama LIKE 'Ok%'`;
+    where += ` AND h.aciklama = 'Ok'`;
   } else if (aciklama === "Mükerrer") {
-    where += ` AND h.aciklama LIKE '%ükerrer%'`;
+    where += ` AND h.aciklama LIKE 'Mükerrer%'`;
   } else if (aciklama === "Eşleşmeyen") {
     where += ` AND (
-      h.aciklama LIKE 'Sell-out%'
-      OR b.eslesme_durum IN ('atama_yok','urun_yok','magaza_yok','uzman_yok')
-      OR (h.id IS NULL AND (b.eslesme_durum IS NULL OR b.eslesme_durum <> 'ok'))
+      h.aciklama LIKE '%Eşleşmeyen%'
+      OR h.aciklama LIKE '%eslesmeyen%'
+      OR h.aciklama LIKE 'Sell-out%'
+      OR h.aciklama LIKE 'Mağazada%'
     )`;
-  } else if (aciklama === "Grup Dışı") {
-    where += ` AND b.eslesme_durum='atama_yok'`;
-  } else if (aciklama === "Grup Satış") {
-    where += ` AND h.id IS NOT NULL`;
   }
 
   for (const [key, values] of Object.entries(filtre)) {
@@ -2205,7 +2205,8 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
       b.durum,
       b.satis_tarihi,
       b.magaza_ham,
-      COALESCE(m.prim_magaza, b.magaza_ham) AS sellout_magaza,
+      COALESCE(mso.prim_magaza, m.prim_magaza, b.magaza_ham) AS sellout_magaza,
+      COALESCE(h.magaza_id, b.magaza_id) AS so_magaza_id,
       b.barkod,
       b.kod,
       b.etiket,
@@ -2225,7 +2226,7 @@ async function primSatirSorgusu(donemId, { q, aciklama, kolonFiltre }) {
       h.aciklama AS h_aciklama,
       h.id AS hesap_id,
       b.eslesme_durum,
-      m.bayi,
+      COALESCE(mso.bayi, m.bayi) AS bayi,
       COALESCE(so_u.adet, so_b.adet, so_r.adet, 0) AS sellout_adet,
       COALESCE(so_u.ciro, so_b.ciro, so_r.ciro, 0) AS sellout_ciro
     ${whereSql}
@@ -2261,8 +2262,10 @@ function enrichRowsSelloutFromMap(rows, { soUniq, canonOf }) {
   for (const r of rows) {
     if (Number(r.sellout_adet || 0) > 0) continue;
     const canon = canonOf(r.kod, r.barkod, r.uniq_kod);
-    if (!canon || !r.magaza_id) continue;
-    const hit = soUniq.get(`${r.magaza_id}|${canon}`);
+    if (!canon) continue;
+    const magId = r.so_magaza_id || r.magaza_id;
+    if (!magId) continue;
+    const hit = soUniq.get(`${magId}|${canon}`);
     if (!hit || hit.adet <= 0) continue;
     r.sellout_adet = hit.adet;
     r.sellout_ciro = hit.ciro;
@@ -2292,6 +2295,15 @@ function primSatirMap(r) {
   const selloutCiro = Number(r.sellout_ciro || 0);
   const adet = Number(r.adet || 0);
   const primeEsas = Number(r.prime_esas_tutar || 0);
+  const raporAciklama = raporAciklamaUret(r.h_aciklama, r.eslesme_durum, {
+    ...grupDisiExtra(r, aks),
+    selloutAdet,
+  });
+  const primAdet = Number(r.prim_adet || 0);
+  const mukerrerMi = String(raporAciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer");
+  const mukerrerAdet = mukerrerMi ? primAdet : 0;
+  const primAdetNet = mukerrerMi ? 0 : primAdet;
+  const primeEsasNet = mukerrerMi ? 0 : primeEsas;
   let bolumMarkalar = "";
   try {
     const raw = r.bolum_markalar;
@@ -2300,7 +2312,7 @@ function primSatirMap(r) {
   } catch {
     bolumMarkalar = String(r.bolum_markalar || "");
   }
-  const primler = satirSatisPrimleri(primeEsas, {
+  const primler = satirSatisPrimleri(primeEsasNet, {
     bayi: r.bayi,
     magaza: r.sellout_magaza || r.magaza_ham,
     grup: bolumMarkalar || r.prim_grup,
@@ -2311,6 +2323,7 @@ function primSatirMap(r) {
     beyan_id: r.beyan_id,
     uzman_id: r.uzman_id || null,
     magaza_id: r.magaza_id || null,
+    so_magaza_id: r.so_magaza_id || r.magaza_id || null,
     urun_id: r.urun_id || r.beyan_urun_id || null,
     ziyaret_id: r.ziyaret_id || "",
     ad,
@@ -2337,19 +2350,23 @@ function primSatirMap(r) {
     uzman_toplam_satis: adet,
     magaza_toplam_satis: selloutAdet,
     kontrol: selloutAdet - adet,
-    rapor_aciklama: raporAciklamaUret(r.h_aciklama, r.eslesme_durum, grupDisiExtra(r, aks)),
+    rapor_aciklama: raporAciklama,
     adet,
     fiyat: r.fiyat != null ? Number(r.fiyat) : null,
     toplam: r.toplam != null ? Number(r.toplam) : null,
     satis_notlari: r.satis_notlari || "",
-    prim_adet: Number(r.prim_adet || 0),
+    prim_adet: primAdet,
+    odenen_adet: primAdet,
+    mukerrer_adet: mukerrerAdet,
+    prim_adet_net: primAdetNet,
     sellout_adet: selloutAdet,
     magaza_kdv_haric_ciro: selloutCiro,
     birim_ciro: r.birim_ciro != null ? Number(r.birim_ciro) : (selloutAdet > 0 ? +(selloutCiro / selloutAdet).toFixed(2) : null),
     prime_esas_tutar: primeEsas,
+    prime_esas_tutar_net: primeEsasNet,
     ...primler,
     bayi: r.bayi || "",
-    satis_turu: satisTuruHesapla(r.eslesme_durum, r.hesap_id, grupDisiExtra(r, aks)),
+    satis_turu: satisTuruHesapla(r.eslesme_durum, r.hesap_id, { ...grupDisiExtra(r, aks), aciklama: r.h_aciklama }),
     nokta_uzman_sayisi: r.nokta_uzman_sayisi != null ? Number(r.nokta_uzman_sayisi) : null,
     eslesme_durum: r.eslesme_durum || "",
     hesap_id: r.hesap_id,
@@ -2359,8 +2376,180 @@ function primSatirMap(r) {
   };
 }
 
+function satisPrimiKolonlariniYenile(s) {
+  const primler = satirSatisPrimleri(Number(s.prime_esas_tutar_net || 0), {
+    bayi: s.bayi,
+    magaza: s.sellout_magaza || s.magaza_ham,
+    grup: s.bolum_markalar || s.prim_grup,
+    altKanal: s.alt_kanal,
+    bolumAdi: s.bolum_adi,
+  });
+  s.prim_yuzde_1 = primler.prim_yuzde_1;
+  s.sephora_sensai = primler.sephora_sensai;
+  s.sephora_bagdat_beymen = primler.sephora_bagdat_beymen;
+  s.sevil_lp = primler.sevil_lp;
+  s.toplam_satis_primi = primler.toplam_satis_primi;
+  return s;
+}
+
+/**
+ * Mükerrer satırda yeşil prim 0; mağazaya sığan prim Ok satırına yazılır.
+ * Fazla adet alta Mükerrer kalır (4 vs 3 → Ok 3, Mükerrer 1).
+ */
+function netMukkerrerDagit(satirlar) {
+  const grupMap = new Map();
+  const okKeys = new Set();
+  for (const s of satirlar) {
+    const key = mukerrerGrupAnahtari(s);
+    if (!grupMap.has(key)) grupMap.set(key, []);
+    grupMap.get(key).push(s);
+    if (!String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer")) {
+      okKeys.add(key);
+    }
+  }
+  for (const grup of grupMap.values()) {
+    let tasinacakAdet = 0;
+    let tasinacakEsas = 0;
+    let hedef = null;
+    for (const s of grup) {
+      const muk = String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer");
+      if (muk) {
+        tasinacakAdet += Number(s.prim_adet || 0);
+        tasinacakEsas += Number(s.prime_esas_tutar || 0);
+        s.prim_adet_net = 0;
+        s.prime_esas_tutar_net = 0;
+      } else if (!hedef) {
+        hedef = s;
+      }
+    }
+    if (hedef && (tasinacakAdet > 0 || tasinacakEsas > 0)) {
+      hedef.prim_adet_net = Number(hedef.prim_adet_net || 0) + tasinacakAdet;
+      hedef.prime_esas_tutar_net = +(Number(hedef.prime_esas_tutar_net || 0) + tasinacakEsas).toFixed(2);
+      satisPrimiKolonlariniYenile(hedef);
+    }
+  }
+  for (const s of satirlar) {
+    const muk = String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer");
+    const hamOdenen = Number(s.odenen_adet ?? s.prim_adet ?? 0);
+    if (muk) {
+      s.prim_adet = 0;
+      s.prime_esas_tutar = 0;
+      s.prime_esas_tutar_net = 0;
+      const beyan = Number(s.adet || 0);
+      const fazla = Math.max(0, beyan - hamOdenen);
+      if (okKeys.has(mukerrerGrupAnahtari(s))) {
+        if (fazla > 0 && hamOdenen > 0) {
+          s.adet = fazla;
+          s.mukerrer_adet = fazla;
+        } else {
+          s.mukerrer_adet = Number(s.mukerrer_adet || beyan);
+        }
+        s.odenen_adet = 0;
+      } else {
+        s.odenen_adet = hamOdenen;
+        s.mukerrer_adet = Number(s.mukerrer_adet || beyan);
+      }
+    } else {
+      s.prim_adet = Number(s.prim_adet_net || 0);
+      s.prime_esas_tutar = Number(s.prime_esas_tutar_net || 0);
+      s.odenen_adet = s.prim_adet;
+    }
+    satisPrimiKolonlariniYenile(s);
+  }
+  return satirlar;
+}
+
+function mukerrerGrupAnahtari(s) {
+  return `${s.uzman_id || ""}|${s.so_magaza_id || s.magaza_id || ""}|${s.uniq_kod || ""}`;
+}
+
+function mukerrerMiSatir(s) {
+  return String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer");
+}
+
+/** Aynı ürün: önce Ok, hemen altında Mükerrer. O(n). */
+function okSonraMukerrerSirala(satirlar) {
+  const okVar = new Set();
+  const mukByKey = new Map();
+  for (const s of satirlar) {
+    const k = mukerrerGrupAnahtari(s);
+    if (mukerrerMiSatir(s)) {
+      if (!mukByKey.has(k)) mukByKey.set(k, []);
+      mukByKey.get(k).push(s);
+    } else {
+      okVar.add(k);
+    }
+  }
+  const mukEklendi = new Set();
+  const out = [];
+  for (const s of satirlar) {
+    if (mukerrerMiSatir(s)) {
+      if (!okVar.has(mukerrerGrupAnahtari(s))) out.push(s);
+      continue;
+    }
+    out.push(s);
+    const k = mukerrerGrupAnahtari(s);
+    if (mukEklendi.has(k)) continue;
+    mukEklendi.add(k);
+    const muks = mukByKey.get(k);
+    if (muks) out.push(...muks);
+  }
+  return out;
+}
+
+/** Tek beyan taşması (2 vs 1): üstte Ok verilen adet, altında Mükerrer 0. */
+function mukerrerSatiriniAltaAyir(satirlar) {
+  const okVar = new Set();
+  for (const s of satirlar) {
+    const muk = mukerrerMiSatir(s);
+    if (!muk) okVar.add(mukerrerGrupAnahtari(s));
+  }
+  const out = [];
+  for (const s of satirlar) {
+    const muk = mukerrerMiSatir(s);
+    const beyan = Number(s.adet || 0);
+    const odenen = Number(s.odenen_adet || 0);
+    if (!muk || odenen <= 0 || odenen >= beyan || okVar.has(mukerrerGrupAnahtari(s))) {
+      out.push(s);
+      continue;
+    }
+    const birim = Number(s.birim_ciro || 0);
+    const esasOk = +(odenen * birim).toFixed(2);
+    const fazla = beyan - odenen;
+    const ok = { ...s };
+    ok.rapor_aciklama = "Ok";
+    ok.adet = odenen;
+    ok.prim_adet = odenen;
+    ok.prim_adet_net = odenen;
+    ok.odenen_adet = odenen;
+    ok.mukerrer_adet = 0;
+    ok.prime_esas_tutar = esasOk;
+    ok.prime_esas_tutar_net = esasOk;
+    satisPrimiKolonlariniYenile(ok);
+    const mk = { ...s };
+    mk.rapor_aciklama = "Mükerrer Giriş";
+    mk.adet = fazla;
+    mk.prim_adet = 0;
+    mk.prim_adet_net = 0;
+    mk.odenen_adet = 0;
+    mk.mukerrer_adet = fazla;
+    mk.prime_esas_tutar = 0;
+    mk.prime_esas_tutar_net = 0;
+    satisPrimiKolonlariniYenile(mk);
+    out.push(ok, mk);
+  }
+  return okSonraMukerrerSirala(out);
+}
+
 async function satirSatirlariHazirla(donemId, rows) {
-  await enrichSelloutByUniq(donemId, rows);
+  if (rows?.length) {
+    const ctx = await loadSelloutUniqMap(donemId);
+    for (const r of rows) {
+      const canon = ctx.canonOf(r.kod, r.barkod, r.uniq_kod);
+      if (canon) r.uniq_kod = canon;
+    }
+    enrichRowsSelloutFromMap(rows, ctx);
+  }
   const [noktaMap, parfumMap] = await Promise.all([
     loadNoktaUzmanSayisiMap(donemId),
     loadParfumUzmanSayisiMap(donemId),
@@ -2372,6 +2561,7 @@ async function satirSatirlariHazirla(donemId, rows) {
 
 function primSatirlariniIsle(rows, { aciklama, kolonFiltre } = {}) {
   let birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
+  birlesik = mukerrerSatiriniAltaAyir(netMukkerrerDagit(birlesik));
   if (aciklama || (kolonFiltre && kolonFiltre.satis_turu)) {
     birlesik = birlesik.filter((s) => primSatirExportFiltrePass(s, aciklama, kolonFiltre));
   }
@@ -2436,11 +2626,11 @@ app.get("/api/prim-raporu/:donemId/satirlar/degerler", wrap(async (req, res) => 
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
 
-  if (kolon === "satis_turu") {
+  if (kolon === "satis_turu" || kolon === "rapor_aciklama") {
     const [ham] = await pool.query(selectSql, params);
     await satirSatirlariHazirla(donemId, ham);
     const birlesik = primSatirlariniIsle(ham, { aciklama, kolonFiltre });
-    const set = new Set(birlesik.map((s) => s.satis_turu).filter(Boolean));
+    const set = new Set(birlesik.map((s) => s[kolon]).filter(Boolean));
     let degerler = [...set].sort((a, b) => String(a).localeCompare(String(b), "tr"));
     if (ara) {
       const qn = ara.toLocaleLowerCase("tr-TR");
@@ -2496,13 +2686,13 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   };
   const sayiKolon = new Set([
     "uzman_toplam_satis", "magaza_toplam_satis", "kontrol",
-    "adet", "fiyat", "toplam", "prim_adet", "sellout_adet",
-    "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar",
+    "adet", "fiyat", "toplam", "prim_adet", "odenen_adet", "mukerrer_adet", "prim_adet_net", "sellout_adet",
+    "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar", "prime_esas_tutar_net",
     "prim_yuzde_1", "sephora_sensai", "sephora_bagdat_beymen", "sevil_lp",
     "toplam_satis_primi", "nokta_uzman_sayisi",
   ]);
   const paraKolon = new Set([
-    "fiyat", "toplam", "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar",
+    "fiyat", "toplam", "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar", "prime_esas_tutar_net",
     "prim_yuzde_1", "sephora_sensai", "sephora_bagdat_beymen", "sevil_lp",
     "toplam_satis_primi",
   ]);
@@ -2510,9 +2700,10 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   function satirDolgu(s) {
     const t = String(s.satis_turu || "").toLocaleLowerCase("tr-TR");
     const a = String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR");
-    if (t.includes("grup dışı") || a.includes("atama yok") || a.includes("mükerrer")) {
+    if (t.includes("grup dışı") || a.includes("atama yok")) {
       return "FFFCE4D6";
     }
+    if (a.includes("mükerrer")) return "FFFCE4D6";
     if (
       t.includes("hesaplama dışı") ||
       a.includes("sell-out") ||
@@ -2575,8 +2766,8 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   applyNoktaUzmanSayisi(rows, noktaMap);
   applyParfumUzmanSayisi(rows, parfumMap);
 
-  for (const r of rows) {
-    const s = primSatirMap(r);
+  const satirlar = mukerrerSatiriniAltaAyir(netMukkerrerDagit(rows.map(primSatirMap)));
+  for (const s of satirlar) {
     applyUzmanUrunToplam(s, uzmanUrunToplam);
     if (!primSatirExportFiltrePass(s, aciklama, kolonFiltre)) continue;
 
@@ -2839,7 +3030,6 @@ app.post("/api/karsilastir/:donemId", upload.single("dosya"), wrap(async (req, r
        JOIN uzman uz ON uz.id=h.uzman_id
        JOIN magaza m ON m.id=h.magaza_id
       WHERE h.donem_id=? AND h.prim_adet > 0
-        AND (h.aciklama LIKE 'Ok%' OR h.aciklama LIKE 'Kısmi Ok%')
       GROUP BY uz.id, m.id
       ORDER BY uz.ad_soyad, m.prim_magaza`,
     [req.params.donemId]
@@ -3041,9 +3231,6 @@ app.get("/api/satis-primi/:donemId/detay/:uzmanId/:magazaId", wrap(async (req, r
     if (r.eslesme_durum === "urun_yok" || !r.urun_id) return { kod: "urun_yok", metin: "Barkod / kod ile ürün çözümlenemedi (uniq_kod'da yok)" };
     if (r.urun_durum && r.urun_durum !== "aktif") return { kod: "urun_pasif", metin: "Ürün pasif durumda (urun.durum ≠ 'aktif')" };
     if (!r.so_adet || Number(r.so_adet) <= 0) return { kod: "sellout_yok", metin: "Bu ürün bu mağazanın sell-out dosyasında bulunamadı (arcon_referans/barkod da eşleşmedi)" };
-    if (r.hesap_aciklama && String(r.hesap_aciklama).startsWith("Kısmi")) {
-      return { kod: "kismi", metin: r.hesap_aciklama };
-    }
     return { kod: "prim_yok", metin: r.hesap_aciklama || "Prim adeti 0 — hesap motoru açıklamasını kontrol et" };
   }
 
@@ -3211,7 +3398,6 @@ app.get("/api/satis-primi/:donemId/export", wrap(async (req, res) => {
        JOIN magaza m ON m.id = h.magaza_id
        LEFT JOIN prim_kural k ON k.bolum_id = h.bolum_id AND k.kriter_key = 'satis_basi'
        WHERE h.donem_id = ? AND h.prim_adet > 0
-         AND (h.aciklama LIKE 'Ok%' OR h.aciklama LIKE 'Kısmi Ok%')
        GROUP BY uz.id, m.id, h.bolum_id
        ORDER BY uz.ad_soyad, m.prim_magaza`
     : `SELECT
@@ -3226,7 +3412,6 @@ app.get("/api/satis-primi/:donemId/export", wrap(async (req, res) => {
        JOIN uzman uz ON uz.id = h.uzman_id
        JOIN magaza m ON m.id = h.magaza_id
        WHERE h.donem_id = ? AND h.prim_adet > 0
-         AND (h.aciklama LIKE 'Ok%' OR h.aciklama LIKE 'Kısmi Ok%')
        GROUP BY uz.id, m.id
        ORDER BY uz.ad_soyad, m.prim_magaza`;
   const params = bolumBazli

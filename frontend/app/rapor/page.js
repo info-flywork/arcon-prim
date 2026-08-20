@@ -18,8 +18,8 @@ const yzd = (v) => {
 
 const SAYISAL_SATIR = new Set([
   "uzman_toplam_satis", "magaza_toplam_satis", "kontrol",
-  "adet", "fiyat", "toplam", "prim_adet", "sellout_adet",
-  "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar",
+  "adet", "fiyat", "toplam", "prim_adet", "odenen_adet", "mukerrer_adet", "prim_adet_net", "sellout_adet",
+  "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar", "prime_esas_tutar_net",
   "prim_yuzde_1", "sephora_sensai", "sephora_bagdat_beymen", "sevil_lp",
   "toplam_satis_primi", "nokta_uzman_sayisi",
 ]);
@@ -112,7 +112,7 @@ function raporSatirRengi(metin, satisTuru) {
 
 function formatSatirHucre(key, v) {
   if (v == null || v === "") return "";
-  if (["fiyat", "toplam", "birim_ciro", "prime_esas_tutar"].includes(key)) {
+  if (["fiyat", "toplam", "birim_ciro", "prime_esas_tutar", "prime_esas_tutar_net"].includes(key)) {
     return Number(v).toLocaleString("tr-TR", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   }
   return String(v);
@@ -415,12 +415,8 @@ export default function PrimRaporu() {
               >
                 <option value="">Tüm açıklamalar</option>
                 <option value="Ok">Ok</option>
-                <option value="Mükerrer">Mükerrer</option>
-                <option value="Eşleşmeyen">Eşleşmeyen / primsiz</option>
-                <option value="Grup Satış">Grup Satış</option>
-                <option value="Grup Dışı" title={GRUP_DISI_OZET}>
-                  Grup Dışı (Puig uzmanı / Givenchy parfüm)
-                </option>
+                <option value="Mükerrer">Mükerrer Giriş</option>
+                <option value="Eşleşmeyen">Mağazada Eşleşmeyen Satış</option>
               </select>
               <button type="submit" className="btn ikincil">Filtrele</button>
               {(arama || aciklama || aramaInput || filtreAktifMi(kolonFiltre)) && (

@@ -15,6 +15,7 @@ const {
   identityCandidates,
   loadProductResolver,
   resolveProduct,
+  resolveProductWithBridge,
 } = require("./productService");
 const { relinkDonemBeyan } = require("./beyanRelink");
 
@@ -517,6 +518,8 @@ async function importZeops(buffer, donemId, dosyaAdi) {
     const storeMap = await loadStoreMaps(conn);
     const uzmanMap = await loadUzmanMap(conn);
     const productResolver = await loadProductResolver(conn);
+    const { loadUniqBridge } = require("./uniqBridge");
+    const uniqBridge = await loadUniqBridge(conn);
     const legacyByProduct = await loadLegacyRepresentatives(conn);
     const [assignmentRows] = await conn.query(
       "SELECT uzman_id,magaza_id FROM uzman_atama WHERE donem_id=?",
@@ -534,7 +537,9 @@ async function importZeops(buffer, donemId, dosyaAdi) {
       const kod = pick(row, "Kod");
       const uzmanId = resolveUzmanId(uzmanMap, uzmanHam);
       const magazaId = resolveStoreId(storeMap, magazaHam) || null;
-      const productMatch = resolveProduct(productResolver, { barcode: barkod, reference: kod });
+      const productMatch = await resolveProductWithBridge(
+        conn, productResolver, { barcode: barkod, reference: kod }, uniqBridge,
+      );
       const productId = productMatch.productId || null;
       const uniqId = productId ? legacyByProduct.get(Number(productId)) || null : null;
 

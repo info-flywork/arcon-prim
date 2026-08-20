@@ -11,8 +11,7 @@ const tarih = (v) => (!v ? "" : new Date(v).toLocaleDateString("tr-TR"));
 function durumRozet(aciklama) {
   if (!aciklama) return { sinif: "notr", metin: "—" };
   if (aciklama === "Ok") return { sinif: "ok", metin: "Ok" };
-  if (aciklama.startsWith("Kısmi")) return { sinif: "notr", metin: "Kısmi Ok" };
-  if (aciklama.startsWith("Mükerrer")) return { sinif: "hata", metin: "Mükerrer Giriş" };
+  if (aciklama.startsWith("Mükerrer") || aciklama.startsWith("Mukerrer")) return { sinif: "hata", metin: "Mükerrer Giriş" };
   if (aciklama.startsWith("Mağazada Eşleşmeyen Satış")) return { sinif: "hata", metin: "Mağazada Eşleşmeyen Satış" };
   return { sinif: "notr", metin: aciklama };
 }
@@ -60,8 +59,7 @@ export default function Mutabakat() {
     return [
       { etiket: "Toplam Satır", deger: say(o.toplam), alt: `${tlk(o.toplam_esas)} prime esas` },
       { etiket: "Ok", deger: say(o.ok_), alt: "temiz eşleşme" },
-      { etiket: "Kısmi Ok", deger: say(o.kismi), alt: "adet aşımı var" },
-      { etiket: "Mükerrer Giriş", deger: say(o.mukerrer), alt: "prim yok" },
+      { etiket: "Mükerrer Giriş", deger: say(o.mukerrer), alt: "fazla beyan" },
       { etiket: "Sell-out yok", deger: say(o.sellout_yok), alt: "prim yok" },
     ];
   }, [veri.ozet]);
@@ -71,7 +69,7 @@ export default function Mutabakat() {
       <h2>Satır Kontrol (Maviler)</h2>
       <p className="aciklama">
         Uzmanların beyanlarını mağaza satış verisiyle karşılaştıran satır bazlı kontrol tablosu. Her satır için
-        sistem, o beyan için prim ödenip ödenmeyeceğini belirler: <b>Ok</b>, <b>Kısmi Ok</b>,
+        sistem, o beyan için prim ödenip ödenmeyeceğini belirler: <b>Ok</b>,
         <b> Mükerrer Giriş</b> ya da <b>Mağazada Eşleşmeyen Satış</b>. Excel'deki "Çalışılmış İlk Kısım (Maviler)"
         sekmesinin sistem tarafından üretilen karşılığı.
       </p>
@@ -95,7 +93,6 @@ export default function Mutabakat() {
               <select value={filtre.durum} onChange={(e) => setFiltre({ ...filtre, durum: e.target.value })}>
                 <option value="">Tüm durumlar</option>
                 <option value="ok">Ok</option>
-                <option value="kismi">Kısmi Ok</option>
                 <option value="mukerrer">Mükerrer Giriş</option>
                 <option value="sellout_yok">Mağazada Eşleşmeyen Satış</option>
               </select>

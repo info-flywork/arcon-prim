@@ -1,5 +1,6 @@
 const pool = require("../db");
 const { relinkDonemBeyan } = require("./beyanRelink");
+const { loadUniqBridge } = require("./uniqBridge");
 
 const INVALID_VALUES = new Set(["", "0", "0,00", "#N/A", "N/A", "TBC", "-", "NULL"]);
 
@@ -129,6 +130,39 @@ function resolveProduct(resolver, rawIdentifiers) {
     productId: selected.urun_id,
     identifierId: selected.identifier_id,
     method: selected.method,
+  };
+}
+
+/**
+ * Zeops kod/barkod urun_kimlik'te yoksa Excel uniq köprüsü ile kanonik UNIQ KOD'a bağla.
+ */
+async function resolveProductWithBridge(conn, resolver, rawIdentifiers, bridgeCtx = null) {
+  const direct = resolveProduct(resolver, rawIdentifiers);
+  if (direct.status === "ok") return direct;
+
+  const bridge = bridgeCtx || await loadUniqBridge(conn);
+  const canon = bridge.canonOf(rawIdentifiers.reference, rawIdentifiers.barcode, null);
+  if (!canon) return direct;
+
+  const viaCanon = resolveProduct(resolver, { reference: canon, barcode: rawIdentifiers.barcode });
+  if (viaCanon.status === "ok") {
+    return { ...viaCanon, method: viaCanon.method || "uniq_kod_koprusu" };
+  }
+
+  const [[urun]] = await conn.query(
+    `SELECT id AS urun_id, uniq_kod, marka, urun_adi, aks, durum
+       FROM urun WHERE uniq_kod=? AND durum IN ('aktif','inceleme') LIMIT 1`,
+    [canon]
+  );
+  if (!urun) return direct;
+
+  return {
+    status: "ok",
+    candidates: identityCandidates(rawIdentifiers),
+    matches: [{ ...urun, identifier_id: null, method: "uniq_kod_koprusu" }],
+    productId: urun.urun_id,
+    identifierId: null,
+    method: "uniq_kod_koprusu",
   };
 }
 
@@ -300,6 +334,7 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
     if (ownsConnection) await conn.commit();
 
     const resolver = await loadProductResolver(conn);
+    const uniqBridge = await loadUniqBridge(conn);
     const [assignmentRows] = await conn.query(
       "SELECT uzman_id,magaza_id FROM uzman_atama WHERE donem_id=?",
       [donemId]
@@ -316,7 +351,9 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
 
     const claimUpdates = [];
     for (const row of claims) {
-      const match = resolveProduct(resolver, { barcode: row.barkod, reference: row.kod });
+      const match = await resolveProductWithBridge(
+        conn, resolver, { barcode: row.barkod, reference: row.kod }, uniqBridge,
+      );
       const status = match.status === "ok"
         ? (!row.magaza_id
           ? "magaza_yok"
@@ -367,7 +404,9 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
 
     const selloutUpdates = [];
     for (const row of sellouts) {
-      const match = resolveProduct(resolver, { barcode: row.arcon_barkod, reference: row.arcon_referans });
+      const match = await resolveProductWithBridge(
+        conn, resolver, { barcode: row.arcon_barkod, reference: row.arcon_referans }, uniqBridge,
+      );
       const matchStatus = match.status === "ok" && !row.magaza_id ? "magaza_yok" : match.status;
       const productId = match.productId || null;
       const identifierId = match.identifierId || null;
@@ -499,6 +538,7 @@ module.exports = {
   identityCandidates,
   loadProductResolver,
   resolveProduct,
+  resolveProductWithBridge,
   assertProductEditable,
   addIdentifier,
   createProduct,
