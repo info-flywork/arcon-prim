@@ -1,0 +1,39 @@
+{
+  "theirSatir": 3522,
+  "ourSatir": 3523,
+  "theirAdet": 7636,
+  "ourAdet": 7638,
+  "theirCiro": 38231371.29,
+  "ourCiro": 38231371.32,
+  "ciroFark": 0.03,
+  "notlar": {
+    "arconBarkodOnlarda": "neredeyse boş; ham URETICI BARKOD dolu",
+    "arconRefOnlarda": "LAP65187548 (marka önekli)",
+    "arconRefBizde": "65187548 (ham FİRMA ÜRÜN KODU)",
+    "magazaOnlarda": "BEYMEN İSTİNYE PARK / BEYMEN SANAL",
+    "magazaBizde": "ham Lokasyon ADI (BEYMEN İSTANBUL İSTİNYEPARK / BEYMEN.COM)"
+  },
+  "barkodAdetMagaza": {
+    "ortakAnahtar": 3462,
+    "sadeceOnlar": 0,
+    "sadeceBiz": 1,
+    "multi": 0,
+    "ciroDiff": 0
+  },
+  "barkodAdet": {
+    "ortakAnahtar": 2774,
+    "sadeceOnlar": 0,
+    "sadeceBiz": 1
+  },
+  "onlyTheirSamples": [],
+  "onlyOursSamples": [
+    {
+      "barkod": "7640319517030",
+      "adet": 2,
+      "magaza": "BEYMEN.COM",
+      "ciro": 0,
+      "ref": "KNB250099"
+    }
+  ],
+  "ciroS": []
+}

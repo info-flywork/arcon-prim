@@ -14,6 +14,21 @@ function normBar(v) {
   return String(v || "").trim().replace(/\D/g, "");
 }
 
+/**
+ * LAP65187548 ↔ 65187548 gibi önekli/öneksiz ref varyantları.
+ * Kısa gürültüyü elemek için en az 5 karakterlik gövde şart.
+ */
+function refKodVariants(v) {
+  const k = normKod(v);
+  if (!k) return [];
+  const out = new Set([k]);
+  const m = k.match(/^[A-Z]{1,6}(\d{5,}[A-Z0-9]*)$/);
+  if (m && m[1].length >= 5) out.add(m[1]);
+  const m2 = k.match(/(\d{5,}[A-Z0-9]*)$/);
+  if (m2 && m2[1].length >= 5) out.add(m2[1]);
+  return [...out];
+}
+
 let csvCache = null;
 
 function loadUniqCsvRows() {
@@ -148,7 +163,7 @@ async function loadUniqBridge(conn) {
     return ref ? normKod(ref) : null;
   }
 
-  return { canonOf, codeToUniq, normKod, normBar };
+  return { canonOf, codeToUniq, normKod, normBar, refKodVariants };
 }
 
-module.exports = { loadUniqBridge, normKod, normBar };
+module.exports = { loadUniqBridge, normKod, normBar, refKodVariants };

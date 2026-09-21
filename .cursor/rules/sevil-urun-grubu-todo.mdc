@@ -1,0 +1,12 @@
+---
+description: Sevil ürün grubu karşılaştırması sona bırakıldı — unutma
+alwaysApply: true
+---
+
+# Sevil · Ürün Grubu (TODO)
+
+- Sevil ham → Arcon Format kıyasında **satır/adet/ciro/mağaza tutarlı**; bir sonraki kanallar (Beymen/Boyner…) devam.
+- **Ürün Grubu / Ürün Grubu Detay** Sevil için **henüz incelenmedi** — en sonda bakılacak.
+- Onların örnekleri: `SAÇ BAKIM`, `PARFÜM - ANA ÜRÜN`, `PARFÜM - YAN ÜRÜN` vb.
+- Bizde şu an kaba normalize var (`BAKIM` → çoğu `CİLT BAKIM`); Sevil ürün grubuna **şimdilik dokunma**, kanallar bitince ayrıca hizala.
+- Prim hesabı ürün grubuna bağlı değil; yine de format parity için son turda düzelt.

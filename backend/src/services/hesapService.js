@@ -280,7 +280,7 @@ async function hesapla(donemId, options = {}) {
     const soBarMap = new Map();    // magaza × arcon_barkod
     const soUniqMap = new Map();   // magaza × kanonik uniq (çoklu barkod fallback havuzu)
     const soUzmanKalan = new Map();
-    const { canonOf: canonUniq, codeToUniq, normKod, normBar } = await loadUniqBridge(conn);
+    const { canonOf: canonUniq, codeToUniq, normKod, normBar, refKodVariants } = await loadUniqBridge(conn);
     const barsByCanon = new Map();
     const refsByCanon = new Map();
     for (const [k, canon] of codeToUniq) {
@@ -337,7 +337,26 @@ async function hesapla(donemId, options = {}) {
       const marka = r.urun_marka || r.marka;
       // Ref/barkod ayrı tutulur → Excel Uniq=referans eşlemesinde doğru birim ciro
       if (r.arcon_referans) {
-        addSoKayit(soRefMap, `${r.magaza_id}|${normKod(r.arcon_referans)}`, adet, ciro, marka);
+        // LAP65187548 ↔ 65187548: aynı kalan nesnesini paylaş (çift tüketim olmasın)
+        const variants = refKodVariants(r.arcon_referans);
+        let kayit = null;
+        for (const rk of variants) {
+          const mevcut = soRefMap.get(`${r.magaza_id}|${rk}`);
+          if (mevcut) {
+            kayit = mevcut;
+            break;
+          }
+        }
+        if (!kayit) {
+          kayit = { adet: 0, ciro: 0, marka, kalan: 0 };
+        }
+        kayit.adet += adet;
+        kayit.ciro += ciro;
+        kayit.kalan += adet;
+        if (marka) kayit.marka = marka;
+        for (const rk of variants) {
+          soRefMap.set(`${r.magaza_id}|${rk}`, kayit);
+        }
       }
       if (r.arcon_barkod) {
         addSoKayit(soBarMap, `${r.magaza_id}|${normBar(r.arcon_barkod)}`, adet, ciro, marka);
@@ -542,10 +561,13 @@ async function hesapla(donemId, options = {}) {
         }
       }
       if (!so && b.kod) {
-        const refAlt = soRefMap.get(`${magazaId}|${normKod(b.kod)}`);
-        if (refAlt) {
-          so = refAlt;
-          soKaynakKey = pool ? `uniq:${magazaId}|${pool}` : `ref:${magazaId}|${normKod(b.kod)}`;
+        for (const rk of refKodVariants(b.kod)) {
+          const refAlt = soRefMap.get(`${magazaId}|${rk}`);
+          if (refAlt) {
+            so = refAlt;
+            soKaynakKey = pool ? `uniq:${magazaId}|${pool}` : `ref:${magazaId}|${rk}`;
+            break;
+          }
         }
       }
       if (!so && b.barkod) {
@@ -568,10 +590,19 @@ async function hesapla(donemId, options = {}) {
       }
       if (!so && canon) {
         for (const ref of refsByCanon.get(canon) || []) {
-          const refAlt = soRefMap.get(`${magazaId}|${normKod(ref)}`);
-          if (refAlt) {
-            so = refAlt;
-            soKaynakKey = pool ? `uniq:${magazaId}|${pool}` : `ref:${magazaId}|${normKod(ref)}`;
+          let hit = null;
+          let hitKod = null;
+          for (const rk of refKodVariants(ref)) {
+            const refAlt = soRefMap.get(`${magazaId}|${rk}`);
+            if (refAlt) {
+              hit = refAlt;
+              hitKod = rk;
+              break;
+            }
+          }
+          if (hit) {
+            so = hit;
+            soKaynakKey = pool ? `uniq:${magazaId}|${pool}` : `ref:${magazaId}|${hitKod}`;
             break;
           }
         }

@@ -1,0 +1,80 @@
+{
+  "ourTotal": 42304,
+  "rapor": {
+    "SEVİL": {
+      "label": "SEVİL",
+      "verdict": "TAM",
+      "ourSatir": 3501,
+      "theirSatir": 3501,
+      "ourAdet": 3496,
+      "theirAdet": 3496,
+      "adetFark": 0,
+      "ourCiro": 22849928.53,
+      "theirCiro": 22849928.53,
+      "ciroFark": 0,
+      "both": 3501,
+      "onlyO": 0,
+      "onlyT": 0
+    },
+    "BEYMEN": {
+      "label": "BEYMEN",
+      "verdict": "FARK",
+      "ourSatir": 3523,
+      "theirSatir": 3533,
+      "ourAdet": 7638,
+      "theirAdet": 7636,
+      "adetFark": 2,
+      "ourCiro": 38231371.32,
+      "theirCiro": 38009581,
+      "ciroFark": 221790.32,
+      "both": 3229,
+      "onlyO": 294,
+      "onlyT": 304
+    },
+    "BOYNER": {
+      "label": "BOYNER",
+      "verdict": "FARK",
+      "ourSatir": 13857,
+      "theirSatir": 13786,
+      "ourAdet": 14317,
+      "theirAdet": 14209,
+      "adetFark": 108,
+      "ourCiro": 85467584.39,
+      "theirCiro": 85451187.23,
+      "ciroFark": 16397.16,
+      "both": 13707,
+      "onlyO": 150,
+      "onlyT": 79
+    },
+    "COMMUNITE": {
+      "label": "COMMUNITE",
+      "verdict": "YAKIN",
+      "ourSatir": 218,
+      "theirSatir": 218,
+      "ourAdet": 294,
+      "theirAdet": 294,
+      "adetFark": 0,
+      "ourCiro": 2048057.76,
+      "theirCiro": 2048057.76,
+      "ciroFark": 0,
+      "both": 215,
+      "onlyO": 3,
+      "onlyT": 3
+    },
+    "SEPHORA": {
+      "label": "SEPHORA",
+      "verdict": "FARK",
+      "ourSatir": 21205,
+      "theirSatir": 21179,
+      "ourAdet": 61692,
+      "theirAdet": 61569,
+      "adetFark": 123,
+      "ourCiro": 229783227.35,
+      "theirCiro": 229001471.62,
+      "ciroFark": 781755.73,
+      "both": 21147,
+      "onlyO": 58,
+      "onlyT": 32
+    }
+  }
+}

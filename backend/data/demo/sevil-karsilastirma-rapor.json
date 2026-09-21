@@ -1,0 +1,67 @@
+{
+  "theirSatir": 3501,
+  "ourSatir": 3501,
+  "theirAdet": 3496,
+  "ourAdet": 3496,
+  "theirCiro": 22849928.53,
+  "ourCiro": 22849928.53,
+  "ciroFark": 0,
+  "barkodAdet": {
+    "ortakAnahtar": 785,
+    "sadeceOnlardaSatir": 0,
+    "sadeceBizdeSatir": 0,
+    "adetTekrarFarkliAnahtar": 0,
+    "ciroFarkliAnahtar": 0,
+    "refFarkliAnahtar": 70,
+    "markaFarkliAnahtar": 256
+  },
+  "magazaBagBarkodAdetMagaza": {
+    "eslesenMin": 3501,
+    "onlarAnahtarBizdeYok": 0
+  },
+  "ciroDiffSamples": [],
+  "refDiffSamples": [
+    {
+      "k": "3346130010166|1|",
+      "their": "HRM107254V0",
+      "ours": "HRM101333V0"
+    },
+    {
+      "k": "3346131402205|1|",
+      "their": "HRM24578",
+      "ours": "HRM107757V0"
+    },
+    {
+      "k": "7611773162661|1|",
+      "their": "LP141999",
+      "ours": "LP131828"
+    },
+    {
+      "k": "7611773144131|1|",
+      "their": "LP139144",
+      "ours": "LP129744"
+    },
+    {
+      "k": "7611773161374|1|",
+      "their": "LP141783",
+      "ours": "LP133736"
+    },
+    {
+      "k": "8057971188192|1|",
+      "their": "DGIP1LB1C02",
+      "ours": "DGB30202350000"
+    },
+    {
+      "k": "8435415012669|1|",
+      "their": "PJG65120122",
+      "ours": "PJG65108897"
+    },
+    {
+      "k": "7611773160674|1|",
+      "their": "LP141713",
+      "ours": "LP133726"
+    }
+  ],
+  "onlyTheirSamples": [],
+  "onlyOursSamples": []
+}

@@ -22,9 +22,17 @@ const {
   grupDisiSatiriMi,
   parfumUzmanSayisiHaritasi,
 } = require("./services/grupDisiKural");
+const {
+  normalizeSelloutFiles,
+  ARCON_SELLOUT_FULL_HEADERS,
+  toXlsxBuffer,
+  rowsFromDbSellout,
+  parseYearMonth,
+} = require("./services/demoSelloutNormalize");
+const { saveDemoSonuc, loadDemoSonuc, readXlsxBuffer } = require("./services/demoSelloutStore");
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 80 * 1024 * 1024 } });
 
 app.use(cors());
 app.use(express.json());
@@ -217,6 +225,126 @@ function importJobTemizle() {
     if ((job.bitis || job.baslangic || 0) < sinir) importJobs.delete(id);
   }
 }
+
+/** Demo: çoklu ham sell-out → Arcon tek Sell-out CSV (importSellout kolonları). DB'ye yazmaz. */
+app.post(
+  "/api/demo/sellout/normalize",
+  upload.array("dosyalar", 20),
+  wrap(async (req, res) => {
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(400).json({ hata: "Dosya yok (form alanı: dosyalar)" });
+    }
+    const yearMonth = String(req.body.yearMonth || req.query.yearMonth || "").trim() || null;
+    const packed = files.map((f) => ({
+      buffer: f.buffer,
+      dosyaAdi: Buffer.from(f.originalname, "latin1").toString("utf8"),
+    }));
+    // Barkod → Arcon Ref (stok_kodu); Sevil ham Ürün Kodu (KT-…) değil
+    const refByBarkod = {};
+    try {
+      const [kimlik] = await pool.query(
+        `SELECT b.deger_normalize AS barkod, s.deger_ham AS stok
+           FROM urun_kimlik b
+           JOIN urun_kimlik s
+             ON s.urun_id = b.urun_id AND s.tip = 'stok_kodu' AND s.aktif = 1
+          WHERE b.tip = 'barkod' AND b.aktif = 1`
+      );
+      for (const r of kimlik) {
+        if (r.barkod && r.stok && !refByBarkod[r.barkod]) refByBarkod[r.barkod] = r.stok;
+      }
+    } catch (e) {
+      console.error("demo refByBarkod:", e.message);
+    }
+    const sonuc = normalizeSelloutFiles(packed, { yearMonth, refByBarkod });
+    const kayit = await saveDemoSonuc(sonuc, {
+      yearMonth,
+      dosyaAdlari: packed.map((f) => f.dosyaAdi),
+    });
+    res.json({
+      ...kayit,
+      uyari:
+        "Excel diske kaydedilir; indir: /api/demo/sellout/xlsx. JSON’da base64 yok (büyük dosyada Failed to fetch olmasın). Dönem sellout’a yazılmaz.",
+    });
+  })
+);
+
+/** Demo: son kaydedilmiş normalize sonucu (sayfa yenileme) — xlsx base64 yok. */
+app.get(
+  "/api/demo/sellout/sonuc",
+  wrap(async (req, res) => {
+    const kayit = await loadDemoSonuc();
+    if (!kayit) {
+      return res.status(404).json({ hata: "Kayıtlı demo çıktı yok — önce Üret." });
+    }
+    res.json({
+      ...kayit,
+      uyari: "Son kayıtlı demo meta (Excel ayrı endpoint). Dönem sellout’a yazılmaz.",
+    });
+  })
+);
+
+/** Demo: son üretilen Arcon Sell-out Excel (disk). */
+app.get("/api/demo/sellout/xlsx", (req, res) => {
+  const buf = readXlsxBuffer();
+  if (!buf) {
+    return res.status(404).json({ hata: "Excel yok — önce Üret." });
+  }
+  const ym = String(req.query.ym || "demo");
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="arcon_sellout_${ym}.xlsx"`);
+  res.send(buf);
+});
+
+/** Demo read-only: DB'deki mevcut (onların yüklediği) Sell-out → aynı Arcon Excel. */
+app.get(
+  "/api/demo/sellout/referans",
+  wrap(async (req, res) => {
+    let donemId = Number(req.query.donemId);
+    const yil = Number(req.query.yil);
+    const ay = Number(req.query.ay);
+    if (!donemId && yil && ay) {
+      const [[d]] = await pool.query("SELECT id, ad FROM donem WHERE yil=? AND ay=?", [yil, ay]);
+      if (!d) return res.status(404).json({ hata: `Dönem yok: ${yil}-${ay}` });
+      donemId = d.id;
+    }
+    if (!donemId) {
+      return res.status(400).json({ hata: "donemId veya yil+ay gerekli" });
+    }
+    const [[donem]] = await pool.query("SELECT id, ad, yil, ay FROM donem WHERE id=?", [donemId]);
+    if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı" });
+
+    const donemMeta = parseYearMonth(`${donem.yil}-${String(donem.ay).padStart(2, "0")}`);
+    const [rows] = await pool.query(
+      `SELECT bayi, urun_adi, arcon_referans, arcon_barkod, adet, ciro_kdv_haric,
+              magaza_ham, marka, marka_grup, urun_grubu
+         FROM sellout WHERE donem_id=? ORDER BY id`,
+      [donemId]
+    );
+    const mapped = rowsFromDbSellout(rows, donemMeta);
+    const [[oz]] = await pool.query(
+      `SELECT COUNT(*) satir, COALESCE(SUM(ciro_kdv_haric),0) ciro, COUNT(DISTINCT bayi) bayi
+         FROM sellout WHERE donem_id=?`,
+      [donemId]
+    );
+    const xlsxBuf = toXlsxBuffer(mapped, "Sell-out Data");
+    res.json({
+      demo: true,
+      format: "arcon-sellout-xlsx",
+      kaynak: "db",
+      uyari: "Salt okuma — DB'deki mevcut Sell-out (onların yüklediği tek dosya).",
+      donem,
+      headers: ARCON_SELLOUT_FULL_HEADERS,
+      satirSayisi: mapped.length,
+      ozet: { satir: Number(oz.satir), ciro: Number(oz.ciro), bayi: Number(oz.bayi) },
+      ornek: mapped.slice(0, 100),
+      xlsxBase64: xlsxBuf.toString("base64"),
+    });
+  })
+);
 
 app.post("/api/import/:tip/:donemId", upload.single("dosya"), wrap(async (req, res) => {
   const tip = req.params.tip;

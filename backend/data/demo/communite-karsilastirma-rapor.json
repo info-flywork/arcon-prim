@@ -1,0 +1,103 @@
+{
+  "theirSatir": 218,
+  "ourSatir": 218,
+  "theirAdet": 294,
+  "ourAdet": 294,
+  "theirCiro": 2048057.76,
+  "ourCiro": 2048057.76,
+  "ciroFark": 0,
+  "parcalar": [
+    {
+      "dosyaAdi": "COMMUNITE AĞUSTOS DATA.xlsx - Sellout ham data.csv",
+      "kanal": "communite",
+      "ozet": {
+        "giren": 1793,
+        "kanonik": 218,
+        "atlanan": 13,
+        "refDb": 0,
+        "lokasyonBlok": [
+          "COMMUNITE GALATAPORT",
+          "COMMUNITE İSTINYEPARK",
+          "COMMUNITESTORE.COM"
+        ],
+        "eslesmeyenLokasyon": []
+      },
+      "uyari": []
+    }
+  ],
+  "barkodAdetMagaza": {
+    "both": 215,
+    "onlyT": 3,
+    "onlyO": 3,
+    "ciroDiffKeys": 0
+  },
+  "onlyTheirSamples": [
+    {
+      "k": "3274872511798|2|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 18006.67,
+      "ref": "GVCP090763",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "3274872511798",
+      "adet": 2
+    },
+    {
+      "k": "4973167015292|1|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 4125,
+      "ref": "KNB1529",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "4973167015292",
+      "adet": 1
+    },
+    {
+      "k": "4973167943540|1|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 4791.67,
+      "ref": "KNB94354",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "4973167943540",
+      "adet": 1
+    }
+  ],
+  "onlyOursSamples": [
+    {
+      "k": "8685136584444|2|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 18006.67,
+      "ref": "",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "8685136584444",
+      "adet": 2
+    },
+    {
+      "k": "8685136362356|1|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 4125,
+      "ref": "",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "8685136362356",
+      "adet": 1
+    },
+    {
+      "k": "8685136362387|1|COMMUNITEGALATAPORT",
+      "n": 1,
+      "ciro": 4791.67,
+      "ref": "",
+      "mag": "COMMUNITE GALATAPORT",
+      "barkod": "8685136362387",
+      "adet": 1
+    }
+  ],
+  "ciroDiffSamples": [],
+  "ourMagaza": [
+    "COMMUNITE GALATAPORT",
+    "COMMUNITE SANAL",
+    "COMMUNITE İSTİNYE PARK"
+  ],
+  "theirMagaza": [
+    "COMMUNITE GALATAPORT",
+    "COMMUNITE SANAL",
+    "COMMUNITE İSTİNYE PARK"
+  ]
+}

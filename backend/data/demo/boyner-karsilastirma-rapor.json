@@ -1,0 +1,182 @@
+{
+  "theirSatir": 13775,
+  "ourSatir": 13857,
+  "theirAdet": 14209,
+  "ourAdet": 14317,
+  "theirCiro": 85454461.01,
+  "ourCiro": 85467584.39,
+  "ciroFark": 13123.38,
+  "barkodAdetMagaza": {
+    "ortak": 8364,
+    "sadeceOnlar": 426,
+    "sadeceBiz": 1056,
+    "ciroDiff": 173
+  },
+  "barkodAdet": {
+    "ortak": 1528,
+    "sadeceOnlar": 0,
+    "sadeceBiz": 82
+  },
+  "onlyTheirSamples": [
+    {
+      "barkod": "3348901630528",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 4298.6,
+      "ref": "C099700190"
+    },
+    {
+      "barkod": "3348901630603",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 3308.33,
+      "ref": "C099700191"
+    },
+    {
+      "barkod": "3348901674751",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 2682.28,
+      "ref": "C099700471"
+    },
+    {
+      "barkod": "3348901786522",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 4237.5,
+      "ref": "E000000930"
+    },
+    {
+      "barkod": "3348901596152",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 1650,
+      "ref": "C026800032"
+    },
+    {
+      "barkod": "3348901663007",
+      "adet": 1,
+      "magaza": "BOYNER İNTERNET",
+      "ciro": 1695.83,
+      "ref": "C036100005"
+    }
+  ],
+  "onlyOursSamples": [
+    {
+      "barkod": "3348901630528",
+      "adet": 1,
+      "magaza": "TRENDYOL",
+      "ciro": 4298.6,
+      "ref": "C099700190"
+    },
+    {
+      "barkod": "3348901630603",
+      "adet": 1,
+      "magaza": "TRENDYOL",
+      "ciro": 3308.33,
+      "ref": "C099700191"
+    },
+    {
+      "barkod": "3348901674751",
+      "adet": 1,
+      "magaza": "TRENDYOL",
+      "ciro": 2682.28,
+      "ref": "C099700471"
+    },
+    {
+      "barkod": "3348901786522",
+      "adet": 1,
+      "magaza": "BOYNERNOW",
+      "ciro": 4237.5,
+      "ref": "E000000930"
+    },
+    {
+      "barkod": "3348901833356",
+      "adet": 1,
+      "magaza": "HEPSIBURADA",
+      "ciro": 2562.5,
+      "ref": "E000001621"
+    },
+    {
+      "barkod": "3348901786515",
+      "adet": 1,
+      "magaza": "HEPSIBURADA",
+      "ciro": 2562.5,
+      "ref": "E000000929"
+    }
+  ],
+  "ciroSamples": [
+    {
+      "k": "3348901833356|1|INTERNET",
+      "t": 2662.5,
+      "o": 2729.17
+    },
+    {
+      "k": "3348901786515|1|INTERNET",
+      "t": 2687.5,
+      "o": 2729.17
+    },
+    {
+      "k": "3348901784955|1|INTERNET",
+      "t": 2048.07,
+      "o": 2020.95
+    },
+    {
+      "k": "3348900600379|1|INTERNET",
+      "t": 1941.67,
+      "o": 2025
+    },
+    {
+      "k": "3348900852655|1|INTERNET",
+      "t": 2574.01,
+      "o": 2568.12
+    }
+  ],
+  "ourOzet": {
+    "giren": 13978,
+    "kanonik": 13857,
+    "atlanan": 121,
+    "eslesmeyenLokasyon": [
+      "TRENDYOL",
+      "BOYNERNOW",
+      "HEPSIBURADA",
+      "ANT_TERRACITY",
+      "DZC_DMALL",
+      "ORD_CADDE",
+      "BTM_PETROL CITY",
+      "AMAZON",
+      "MUG_FETHIYE",
+      "ADN_OPTIMUM",
+      "KRS_KARS",
+      "IZM_WESTPARK",
+      "IST_OUTLET MASLAK",
+      "IST_UMRANIYE MEYDAN",
+      "PAZARAMA",
+      "IST_VIAPORT",
+      "IST_OUTLET VENEZIA",
+      "IZM_OUTLET CIGLI KIPA",
+      "KNY_OUTLET NOVADA",
+      "MNS_SALIHLI OUTLET",
+      "BTM_BATMANPARK",
+      "AFY_OUTLET WATERMALL",
+      "BAL_EDREMIT NOVADA",
+      "SKR_AGORA",
+      "MRS_MARINA",
+      "IST_OUTLET 212 POWER",
+      "SRT_SIIRTPARK",
+      "ANT_ALANYA",
+      "KYS_KUMSMALL OUTLET",
+      "IGD_CADDE",
+      "AYD_OUTLET KUSADASI NEO AKKUS",
+      "IST_OUTLET OPTIMUM",
+      "IST_OUTLET OLIVIUM",
+      "IST_OUTLET KARTAL ANPA",
+      "ANT_KEMER",
+      "MUG_RUYA 48 YATAGAN OUTLET",
+      "MNS_MEYDAN",
+      "IST_OUTLET ANPA BRANDIUM",
+      "IST_NAUTILUS",
+      "BNG_OUTLET PIESTAPARK"
+    ]
+  }
+}

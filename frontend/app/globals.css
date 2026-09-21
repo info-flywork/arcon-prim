@@ -1091,6 +1091,69 @@ label { font-size: 13.5px; font-weight: 600; color: var(--metin-2); }
 }
 .kural-tablo th.sag,
 .kural-tablo td.sag { text-align: right; padding-right: 14px; }
+
+/* Demo sell-out Excel önizleme — kural-tablo % genişlik kurallarını ezmesin */
+.demo-excel-kapsayici {
+  margin: 0 12px 16px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 70vh;
+  background: #fff;
+}
+.demo-excel-tablo {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+  margin: 0;
+}
+.demo-excel-tablo th,
+.demo-excel-tablo td {
+  border-bottom: 1px solid #e8ecf2;
+  border-right: 1px solid #eef1f6;
+  padding: 6px 10px;
+  white-space: nowrap;
+  vertical-align: top;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #fff;
+  color: #1a1f2c;
+}
+.demo-excel-tablo th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #eef2f7;
+  font-weight: 700;
+  font-size: 11px;
+  color: #334;
+}
+.demo-excel-tablo .demo-excel-nr {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #f8fafc;
+  color: #889;
+  font-size: 11px;
+  min-width: 44px;
+  width: 44px;
+  text-align: right;
+}
+.demo-excel-tablo thead .demo-excel-nr {
+  z-index: 3;
+  background: #eef2f7;
+}
+.demo-excel-tablo tbody tr:hover td {
+  background: #f5f8ff;
+}
+.demo-excel-tablo tbody tr:hover .demo-excel-nr {
+  background: #eef4fc;
+}
+.demo-excel-bos {
+  color: #c5cad3;
+}
 .kural-satir-toplam td {
   background: #ecfdf5;
   border-top: 1px solid #a7f3d0;
