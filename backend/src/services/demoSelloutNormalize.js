@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const XLSX = require("xlsx");
+const { eleZeopsDisi } = require("./demoZeopsMagaza");
 
 const KDV_ORAN = 1.2;
 
@@ -257,6 +258,19 @@ function loadJson(name) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
+/** Map değeri string veya { arcon, aktif } olabilir (Boyner sıralama formatı). */
+function resolveMagazaAd(map, ham) {
+  if (!ham || !map) return "";
+  const v = map[ham];
+  if (v == null || v === "") return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") {
+    if (v.aktif === false) return "";
+    return String(v.arcon || v.ad || "").trim();
+  }
+  return String(v).trim();
+}
+
 function parseTrNumber(v) {
   if (v == null || v === "") return null;
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -350,6 +364,27 @@ function foldKey(s) {
     .replace(/[^a-z0-9()]+/g, "");
 }
 
+/** Online / outlet — prim yok (Birol Format’ta da yok). Sell-out’ta atlanır. */
+function isOnlineMagaza(...parts) {
+  const s = parts
+    .filter((p) => p != null && String(p).trim() !== "")
+    .map((p) => String(p).toLocaleUpperCase("tr-TR"))
+    .join(" ");
+  if (!s) return false;
+  if (/ON[\s-]?LINE|E[\s-]?STORE|ESTORE|INTERNET|E[\s-]?COM\b/.test(s)) return true;
+  if (/BEYMEN\.COM|COMMUNITESTORE\.COM|SEPHORA\.COM/.test(s)) return true;
+  if (/\.COM\b/.test(s) && /BEYMEN|SEPHORA|COMMUNITE|BOYNER|SEV[İI]L/.test(s)) return true;
+  // Boyner pazaryeri / e-ticaret lokasyonları (Birol’da yok)
+  if (/\b(TRENDYOL|AMAZON|HEPSIBURADA|BOYNERNOW|PAZARAMA)\b/.test(s)) return true;
+  // Sevil sanal / online mağaza adı
+  if (/SEV[İI]L\s+SANAL|\bSANAL\b/.test(s) && /SEV[İI]L|SANAL/.test(s)) return true;
+  // Boyner outlet lokasyonları (Birol sell-out’ta yok — prim yok)
+  if (/\bOUTLET\b|_OUTLET|OUTLET_/.test(s)) return true;
+  // Sephora E-STORE mağaza kodu
+  if (/^2853$/.test(String(parts[0] || "").trim())) return true;
+  return false;
+}
+
 function matrixToObjects(matrix, headerRowIndex) {
   const hdr = (matrix[headerRowIndex] || []).map((h) => String(h || "").trim());
   const out = [];
@@ -417,6 +452,7 @@ function normalizeSevil(rows, maps, dosyaAdi, opts = {}) {
   let atlanan = 0;
   let kdvDusulen = 0;
   let refDb = 0;
+  let atlananOnline = 0;
   const eslesmeyenKod = new Set();
 
   for (const row of rows) {
@@ -432,6 +468,11 @@ function normalizeSevil(rows, maps, dosyaAdi, opts = {}) {
     kdvDusulen++;
     const magaza = sevilMap[kod] || "";
     if (kod && !magaza) eslesmeyenKod.add(kod);
+    const magazaFinal = magaza || `SEVİL KOD:${kod}`;
+    if (isOnlineMagaza(kod, magaza, magazaFinal)) {
+      atlananOnline++;
+      continue;
+    }
     // Onların Arcon Ref = ürün kartındaki stok_kodu (SHR169250); ham Ürün Kodu (KT-169250) değil.
     const hamKod = String(pick(row, "Ürün Kodu", "Urun Kodu") || "").trim();
     const dbRef = refByBarkod[barkod] || "";
@@ -442,7 +483,7 @@ function normalizeSevil(rows, maps, dosyaAdi, opts = {}) {
         barkod,
         adet: Math.round(adet),
         ciro,
-        magaza: magaza || `SEVİL KOD:${kod}`,
+        magaza: magazaFinal,
         marka: String(pick(row, "MARKA Açıklama", "MARKA", "Marka") || "").trim(),
         urunAdi: String(pick(row, "Ürün Adı", "Urun Adi") || "").trim(),
         referans: dbRef || hamKod,
@@ -459,6 +500,7 @@ function normalizeSevil(rows, maps, dosyaAdi, opts = {}) {
       giren: rows.length,
       kanonik: out.length,
       atlanan,
+      atlananOnline,
       kdvDusulen,
       arconRefDb: refDb,
       eslesmeyenMagazaKod: [...eslesmeyenKod],
@@ -474,6 +516,7 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
   let atlananFiyat = 0;
   let atlananAy = 0;
   let atlananBarkod = 0;
+  let atlananOnline = 0;
   let refDb = 0;
 
   for (const row of rows) {
@@ -492,7 +535,7 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
       atlananFiyat++;
       continue;
     }
-    const barkod = String(
+    const barkodHam = String(
       pick(
         row,
         "Ürün Varyant URETICI BARKOD",
@@ -500,8 +543,15 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
         "Urun Varyant URETICI BARKOD"
       ) || ""
     ).trim();
-    if (!barkod) {
+    // Hamda bazen '3473311540805?' gibi soru işaretli geliyor — sadece rakamlar
+    const barkod = barkodHam.replace(/\D/g, "");
+    if (!barkod || barkod.length < 8) {
       atlananBarkod++;
+      continue;
+    }
+    const magaza = String(pick(row, "Lokasyon ADI", "Lokasyon Adi") || "").trim();
+    if (isOnlineMagaza(magaza)) {
+      atlananOnline++;
       continue;
     }
     const hamRef = String(pick(row, "Ürün Ana FİRMA ÜRÜN KODU AKTİF") || "").trim();
@@ -513,7 +563,7 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
         barkod,
         adet: Math.round(adet),
         ciro: Math.round(ciro * 100) / 100,
-        magaza: String(pick(row, "Lokasyon ADI", "Lokasyon Adi") || "").trim(),
+        magaza,
         marka: String(pick(row, "Ürün Marka ADI", "Urun Marka ADI") || "").trim(),
         urunAdi: String(pick(row, "Ürün Varyant ADI", "Ürün Ana ADI") || "").trim(),
         referans: dbRef || hamRef,
@@ -532,6 +582,7 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
       atlananFiyat,
       atlananAy,
       atlananBarkod,
+      atlananOnline,
       arconRefDb: refDb,
       yearMonthFiltre: yearMonth || null,
     },
@@ -547,6 +598,7 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
   let atlanan = 0;
   let eanMapHit = 0;
   let refDb = 0;
+  let atlananOnline = 0;
   const eslesmeyen = new Set();
 
   for (const row of rows) {
@@ -562,6 +614,11 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
     const magaza = sephMap[kod] || "";
     if (kod && !magaza) eslesmeyen.add(kod);
     const storeDesc = String(pick(row, "Simple Store Description") || "").trim();
+    const magazaFinal = magaza || (storeDesc ? `SEPHORA ${storeDesc}` : `SEPHORA KOD:${kod}`);
+    if (isOnlineMagaza(kod, magaza, storeDesc, magazaFinal)) {
+      atlananOnline++;
+      continue;
+    }
     const matKod = String(pick(row, "Material Code") || "").trim();
 
     // Onların Format’ı: ham EAN → Arcon Barkod + Arcon Ref (stok).
@@ -590,7 +647,7 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
         barkod,
         adet: Math.round(qty),
         ciro,
-        magaza: magaza || (storeDesc ? `SEPHORA ${storeDesc}` : `SEPHORA KOD:${kod}`),
+        magaza: magazaFinal,
         marka: String(pick(row, "Brand") || "").trim(),
         urunAdi: String(pick(row, "Material") || "").trim(),
         referans,
@@ -607,6 +664,7 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
       giren: rows.length,
       kanonik: out.length,
       atlanan,
+      atlananOnline,
       eanMapHit,
       refDb,
       eslesmeyenMagazaKod: [...eslesmeyen],
@@ -619,6 +677,7 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
   const boynerMap = maps.boyner || {};
   const out = [];
   let atlanan = 0;
+  let atlananOnline = 0;
   const eslesmeyen = new Set();
 
   for (const row of rows) {
@@ -627,17 +686,31 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
       pick(row, "Pos Kasa Satış Net Tutar KDV'siz", "Pos Kasa Satis Net Tutar KDVsiz")
     );
     const barkod = String(pick(row, "Urun ANAEAN", "Ürün ANAEAN") || "").trim();
-    if (!barkod || adet == null || adet === 0 || ciro == null) {
+    // Hamda barkodsuz GWP/numune bazen '-1' / -1 geliyor — geçersiz, atla
+    const barkodTemiz = barkod.replace(/^'+/, "").trim();
+    if (
+      !barkodTemiz ||
+      barkodTemiz === "-1" ||
+      barkodTemiz === "0" ||
+      !/\d{8,}/.test(barkodTemiz) ||
+      adet == null ||
+      adet === 0 ||
+      ciro == null
+    ) {
       atlanan++;
       continue;
     }
     const lok = String(pick(row, "Lokasyon DESC", "Lokasyon") || "").trim();
-    const magaza = boynerMap[lok] || lok;
-    if (lok && !boynerMap[lok]) eslesmeyen.add(lok);
+    const magaza = resolveMagazaAd(boynerMap, lok) || lok;
+    if (lok && !resolveMagazaAd(boynerMap, lok)) eslesmeyen.add(lok);
+    if (isOnlineMagaza(lok, magaza)) {
+      atlananOnline++;
+      continue;
+    }
     out.push(
       canonRow({
         bayi: "BOYNER",
-        barkod,
+        barkod: barkodTemiz,
         adet: Math.round(adet),
         ciro: Math.round(ciro * 100) / 100,
         magaza,
@@ -658,6 +731,7 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
       giren: rows.length,
       kanonik: out.length,
       atlanan,
+      atlananOnline,
       eslesmeyenLokasyon: [...eslesmeyen].slice(0, 40),
     },
     uyari: [],
@@ -673,7 +747,7 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
 function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
   const magMap = maps.communite || {};
   const refByBarkod = opts.refByBarkod || {};
-  const SKIP_LOK = new Set(["GENEL TOPLAM", "HORIZON DAĞITIM MERKEZI"]);
+  const SKIP_LOK = new Set(["GENEL TOPLAM", "HORIZON DAĞITIM MERKEZI", "COMMUNITESTORE.COM"]);
 
   let locRowIdx = -1;
   let metricRowIdx = -1;
@@ -699,6 +773,7 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
     if (!lok) continue;
     const up = lok.toLocaleUpperCase("tr-TR");
     if (SKIP_LOK.has(up) || up.includes("GENEL TOPLAM") || up.startsWith("HORIZON")) continue;
+    if (isOnlineMagaza(lok, up)) continue;
     // Blok: [Pos miktar, SAP miktar, SAP tutar] — lokasyon adı SAP miktar kolonunun 1 önünde
     // Hamda lokasyon başlığı Pos kolonunun üzerinde (c, c+1, c+2)
     blocks.push({ lok, posCol: c, sapAdetCol: c + 1, sapCiroCol: c + 2 });
@@ -706,6 +781,7 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
 
   const out = [];
   let atlanan = 0;
+  let atlananOnline = 0;
   let refDb = 0;
   const eslesmeyen = new Set();
   let marka = "";
@@ -734,6 +810,10 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
 
       const magaza = magMap[b.lok] || b.lok;
       if (b.lok && !magMap[b.lok]) eslesmeyen.add(b.lok);
+      if (isOnlineMagaza(b.lok, magaza)) {
+        atlananOnline++;
+        continue;
+      }
 
       out.push(
         canonRow({
@@ -759,6 +839,7 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
       giren: matrix.length - (metricRowIdx + 1),
       kanonik: out.length,
       atlanan,
+      atlananOnline,
       refDb,
       lokasyonBlok: blocks.map((b) => b.lok),
       eslesmeyenLokasyon: [...eslesmeyen],
@@ -793,7 +874,7 @@ function toCsv(rows, { arconOnly = false } = {}) {
 
 /**
  * @param {{ buffer: Buffer, dosyaAdi: string }[]} files
- * @param {{ yearMonth?: string }} opts
+ * @param {{ yearMonth?: string, zeopsIndex?: { bul: (s: string) => string|null, adet?: number } }} opts
  */
 function normalizeSelloutFiles(files, opts = {}) {
   const maps = loadMaps();
@@ -850,17 +931,54 @@ function normalizeSelloutFiles(files, opts = {}) {
     });
   }
 
+  // Birol Format: iade yok (adet/ciro negatif satır üretilmez)
+  // canonRow alanları: Adet / Ciro Kdv Hariç
+  let atlananIade = 0;
+  const tumNet = [];
+  for (const r of tum) {
+    const adet = Number(r.Adet ?? r.adet);
+    const ciro = Number(r["Ciro Kdv Hariç"] ?? r.ciro);
+    if ((Number.isFinite(adet) && adet < 0) || (Number.isFinite(ciro) && ciro < 0)) {
+      atlananIade++;
+      continue;
+    }
+    tumNet.push(r);
+  }
+
+  let zeopsEleme = null;
+  let tumZeops = tumNet;
+  if (opts.zeopsIndex) {
+    zeopsEleme = eleZeopsDisi(
+      tumNet,
+      opts.zeopsIndex,
+      (r) => r["Prim Mağaza"] || r.Mağaza,
+      (r, ad) => {
+        r["Prim Mağaza"] = ad;
+        if ("Mağaza" in r) r.Mağaza = ad;
+      }
+    );
+    tumZeops = zeopsEleme.kalan;
+  }
+
   const donem = parseYearMonth(opts.yearMonth);
-  const fullRows = tum.map((r) => toFullArconRow(r, donem));
+  const fullRows = tumZeops.map((r) => toFullArconRow(r, donem));
   const xlsxBuf = toXlsxBuffer(fullRows, "Sell-out Data");
 
   return {
     headers: ARCON_SELLOUT_FULL_HEADERS,
-    satirSayisi: tum.length,
+    satirSayisi: tumZeops.length,
     ornek: fullRows.slice(0, 100),
     parcalar,
-    csv: toCsv(tum, { arconOnly: true }),
-    csvDebug: toCsv(tum, { arconOnly: false }),
+    ozet: {
+      atlananIade,
+      zeopsMagaza: opts.zeopsIndex?.adet ?? null,
+      atlananZeopsSatir: zeopsEleme?.satir ?? 0,
+      atlananZeopsMagaza: zeopsEleme?.magazalar?.length ?? 0,
+      zeopsYazim: zeopsEleme?.yazimHizalanan ?? 0,
+      zeopsDisiMagazalar: zeopsEleme?.magazalar ?? [],
+    },
+    csv: toCsv(tumZeops, { arconOnly: true }),
+    csvDebug: toCsv(tumZeops, { arconOnly: false }),
     xlsxBase64: xlsxBuf.toString("base64"),
     donem,
   };
@@ -897,4 +1015,5 @@ module.exports = {
   toFullArconRow,
   rowsFromDbSellout,
   parseYearMonth,
+  isOnlineMagaza,
 };

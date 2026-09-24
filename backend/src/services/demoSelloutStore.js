@@ -45,6 +45,7 @@ function payloadFromNormalize(sonuc, { yearMonth, dosyaAdlari } = {}) {
     ornek: sonuc.ornek,
     headers: sonuc.headers,
     kaynakDosyalar: dosyaAdlari || [],
+    ozet: sonuc.ozet || null,
     xlsxIndir: "/api/demo/sellout/xlsx",
   };
 }

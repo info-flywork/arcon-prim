@@ -92,7 +92,7 @@ test("mağaza parfüm uzman sayısı Puig + HGD; Dior/Sensai sayılmaz", () => {
   assert.equal(dior.get(3), 1);
 });
 
-test("2+ uzmanda Puig ↔ HGD karşılıklı kesilir; tek uzmanda kesim yok", () => {
+test("Puig ↔ HGD karşılıklı kesim yok", () => {
   assert.equal(grupDisiSatiriMi({
     primGrup: "Carolina Herrera",
     marka: "BYREDO",
@@ -105,25 +105,25 @@ test("2+ uzmanda Puig ↔ HGD karşılıklı kesilir; tek uzmanda kesim yok", ()
     marka: "GIVENCHY",
     aks: "PARFÜM",
     parfumUzmanSayisi: 2,
-  }), true, "Puigci Givenchy → grup dışı");
+  }), false, "Puigci Givenchy → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Puig",
     marka: "DOLCE & GABBANA",
     aks: "PARFÜM",
     parfumUzmanSayisi: 2,
-  }), true, "Puigci DG → grup dışı");
+  }), false, "Puigci DG → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Puig",
     marka: "HERMES",
     aks: "PARFÜM",
     parfumUzmanSayisi: 2,
-  }), true, "Puigci Hermes → grup dışı");
+  }), false, "Puigci Hermes → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Givenchy+Hermes+Dolce",
     marka: "RABANNE",
     aks: "PARFÜM",
     parfumUzmanSayisi: 2,
-  }), true, "HGD uzmanı Puig → grup dışı");
+  }), false, "HGD uzmanı Puig → prim");
   assert.equal(grupDisiSatiriMi({
     primGrup: "Hermes",
     marka: "RABANNE",

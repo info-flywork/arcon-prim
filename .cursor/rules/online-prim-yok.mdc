@@ -1,0 +1,20 @@
+---
+description: Online / e-store satışlara prim yok; Birol’a da böyle söyle
+alwaysApply: true
+---
+
+# Online / outlet — prim yok
+
+Sell-out ve sıralama normalize’da **online / e-store / outlet satırları üretilmez** (prim verilmez; Birol Format’ta da yok).
+
+Atlanan örnekler:
+- Sephora: `ON-LINE`, `E-STORE`, mağaza kodu `2853`
+- Beymen: `BEYMEN.COM`
+- Communite: `COMMUNITESTORE.COM`
+- Boyner: `TRENDYOL`, `AMAZON`, `HEPSIBURADA`, `BOYNERNOW`, `PAZARAMA`
+- Boyner outlet: `IST_OUTLET MASLAK`, `KNY_OUTLET NOVADA`, vb. (isimde `OUTLET`)
+- Sevil: `SEVİL SANAL`
+
+**İade:** Birol Format’ta adet/ciro negatif satır yok — biz de üretmiyoruz.
+
+**Birol görüşmesi notu:** Biz online’ı bilinçli eledik; karşılaştırma / kapsam konuşurken bunu hatırlat.

@@ -25,17 +25,13 @@
 // =====================================================================
 const pool = require("../db");
 const { normalizeName } = require("../util");
-const { loadProductResolver, resolveProductWithBridge } = require("./productService");
+const { loadProductResolver, resolveProductWithBridge, tamamlaEksikAtamalar } = require("./productService");
 const { loadUniqBridge } = require("./uniqBridge");
 const { relinkDonemBeyan } = require("./beyanRelink");
-const {
-  dfbPrimHaricMi,
-  puigUzmanGrubuMu,
-  hgdPuigKesilirGrubuMu,
-  parfumUzmanSayisiHaritasi,
-  puigMarkaMi,
-  hgdMarkaMi,
-} = require("./grupDisiKural");
+const { beymenCiltPrimleri, agustosBeymenNicheCiroPrimVar } = require("./beymenCiltKural");
+const { dfbPrimHaricMi } = require("./grupDisiKural");
+const { GEZICI_ADLAR, resolvePrimMagaza } = require("./geziciUzman");
+const { ekleManuelBirolTutarlari } = require("./manuelBirolTutar");
 
 /**
  * Sell-out mükerrer modu:
@@ -218,6 +214,44 @@ function grupMarkalari(markalarJson, tumMarkalar, markaGrupMap) {
   return tumMarkalar.filter((m) => markaGrubunda(markalarJson, m, markaGrupMap));
 }
 
+/** Eski Zeops kopyalarını dosya atamasından ayır. Sütun ilk eklendiğinde bir kez. */
+async function ensureAtamaKaynakKolonu(conn) {
+  const [cols] = await conn.query("SHOW COLUMNS FROM uzman_atama LIKE 'kaynak'");
+  if (cols.length) return;
+  await conn.query(
+    "ALTER TABLE uzman_atama ADD COLUMN kaynak VARCHAR(16) NOT NULL DEFAULT 'dosya'"
+  );
+  await conn.query(
+    `UPDATE uzman_atama a
+     JOIN (
+       SELECT donem_id, uzman_id, bolum_id, MIN(id) mid
+       FROM uzman_atama
+       GROUP BY donem_id, uzman_id, bolum_id
+     ) m ON m.donem_id=a.donem_id AND m.uzman_id=a.uzman_id AND m.bolum_id=a.bolum_id
+     SET a.kaynak='zeops'
+     WHERE a.id <> m.mid`
+  );
+}
+
+/** Gezici hariç, bayi tutmayan Zeops kopyasını sil. O satış prime girmez. */
+async function silCaprazBayiKopyalari(conn, donemId) {
+  const ph = GEZICI_ADLAR.map(() => "?").join(",");
+  await conn.query(
+    `DELETE a FROM uzman_atama a
+     JOIN uzman u ON u.id=a.uzman_id
+     JOIN magaza m ON m.id=a.magaza_id
+     WHERE a.donem_id=? AND a.kaynak='zeops'
+       AND u.normal_ad NOT IN (${ph})
+       AND NOT EXISTS (
+         SELECT 1 FROM uzman_atama d
+         JOIN magaza md ON md.id=d.magaza_id
+         WHERE d.donem_id=a.donem_id AND d.uzman_id=a.uzman_id AND d.kaynak='dosya'
+           AND UPPER(TRIM(md.bayi)) = UPPER(TRIM(m.bayi))
+       )`,
+    [donemId, ...GEZICI_ADLAR]
+  );
+}
+
 async function hesapla(donemId, options = {}) {
   const conn = options.connection || await pool.getConnection();
   const ownsConnection = !options.connection;
@@ -225,6 +259,10 @@ async function hesapla(donemId, options = {}) {
   try {
     if (ownsConnection) await conn.beginTransaction();
     await relinkDonemBeyan(conn, donemId);
+    await ensureAtamaKaynakKolonu(conn);
+    await silCaprazBayiKopyalari(conn, donemId);
+    // Gezici: Zeops mağazasına bayi fark etmeksizin. Diğerleri: yalnız aynı bayi.
+    await tamamlaEksikAtamalar(conn, donemId);
     await conn.query("DELETE FROM prim_hesap_satir WHERE donem_id=?", [donemId]);
     await conn.query("DELETE FROM prim_ozet WHERE donem_id=?", [donemId]);
 
@@ -236,7 +274,7 @@ async function hesapla(donemId, options = {}) {
 
     // --- Referans verileri yükle ---
     const [atamalar] = await conn.query(
-      `SELECT a.*, u.ad_soyad, m.prim_magaza, m.bayi, b.markalar, b.kanal, b.bolum_adi,
+      `SELECT a.*, u.ad_soyad, u.normal_ad, m.prim_magaza, m.bayi, b.markalar, b.kanal, b.bolum_adi,
               b.grup_toplam_oran, b.max_prim_oran, b.marka_grubu_key
        FROM uzman_atama a
        JOIN uzman u ON u.id=a.uzman_id
@@ -442,8 +480,11 @@ async function hesapla(donemId, options = {}) {
       return "GENEL";
     }
     const siraMap = new Map();
+    const siraList = [];
     for (const r of siraRows) {
-      siraMap.set(`${r.magaza_id}|${cesitAnahtar(r.cesit)}|${normalizeName(r.marka)}`, r.sira);
+      const cesit = cesitAnahtar(r.cesit);
+      siraMap.set(`${r.magaza_id}|${cesit}|${normalizeName(r.marka)}`, r.sira);
+      siraList.push({ magazaId: r.magaza_id, cesit, marka: r.marka, sira: Number(r.sira) });
     }
 
     // Beyan satırları:
@@ -477,8 +518,8 @@ async function hesapla(donemId, options = {}) {
       return null;
     }
 
-    // Uzman-Mağaza-Grup Excel master: uzman yalnızca o dosyadaki mağaza(lar)da
-    // primlenir. Başka mağazada satış olsa bile kapsam dışı kalır.
+    // Master atama + Zeops’ta satışı olup kopyalanan mağazalar.
+    // Kopya yoksa (uzmanın hiç senaryosu yoksa) o mağaza kapsam dışı kalır.
     const uzmanBolumler = new Map(); // uzman_id -> [atama_kaydı]
     for (const a of atamalar) {
       if (!uzmanBolumler.has(a.uzman_id)) uzmanBolumler.set(a.uzman_id, []);
@@ -491,51 +532,26 @@ async function hesapla(donemId, options = {}) {
       if (!atamaByUzmanMagaza.has(k)) atamaByUzmanMagaza.set(k, []);
       atamaByUzmanMagaza.get(k).push(a);
     }
-    const parfumSayisiByMagaza = parfumUzmanSayisiHaritasi(atamalar);
-
-    // Excel Sell-Out Mağaza: Zeops mağazasında atama yoksa, aynı bayideki
-    // tek atama mağazasının sell-out'una bağlanır (Ahmet Marmara → Akasya).
+    // Gezici: Zeops mağazası. Aynı bayi: Zeops kalır. Farklı bayi: prim yok.
     function resolveSoMagaza(uzmanId, magazaId) {
-      if (magazaId == null) return magazaId;
-      if (atamaByUzmanMagaza.has(`${uzmanId}|${magazaId}`)) return magazaId;
       const list = uzmanBolumler.get(uzmanId) || [];
-      if (!list.length) return magazaId;
-      const bayi = normalizeName(magazaBayi.get(magazaId) || "");
-      const seen = [];
-      for (const a of list) {
-        if (seen.includes(a.magaza_id)) continue;
-        const aBayi = normalizeName(magazaBayi.get(a.magaza_id) || "");
-        if (!bayi || !aBayi || aBayi === bayi) seen.push(a.magaza_id);
-      }
-      if (seen.length === 1) return seen[0];
-      const unique = [...new Set(list.map((a) => a.magaza_id))];
-      if (unique.length === 1) return unique[0];
-      return magazaId;
+      return resolvePrimMagaza({
+        uzmanNormal: list[0]?.normal_ad || "",
+        zeopsMagazaId: magazaId,
+        atamalar: list,
+        bayiOf: (id) => normalizeName(magazaBayi.get(id) || ""),
+      });
     }
 
-    // Prim: mağazada ataması varsa ver.
-    // Tek parfüm sorumlusu: karşı grubu da primle (Dior/Sensai fallback).
-    // 2+ parfüm sorumlusu:
-    //   Puig/Rabanne/JPG/CH uzmanı sadece HGD parfümde kesilir.
-    //   Givenchy+Hermes+Dolce uzmanı sadece Puig parfümde kesilir.
-    //   Bunun dışındaki markalarda (LP/Niche vb.) grup dışı uygulanmaz.
-    //   Tek Hermes/Giv/Dolce ve Parfüm Tüm kesilmez.
-    // Narciso-Issey-Zadig DFB — Excel Prime Dahil Değil.
+    // Prim: mağazada ataması varsa ver. Karşı parfüm grubu da aynı senaryoyla prime girer.
+    // DFB (Narciso / Issey / Zadig) tik açıkken prime girmez.
+    const dfbPrimDisi = donem.dfb_prim_disi == null || Number(donem.dfb_prim_disi) === 1;
     function bolumSec(uzmanId, magazaId, urunMarka, aks) {
       const dogrudanlar = atamaByUzmanMagaza.get(`${uzmanId}|${magazaId}`) || [];
       if (!dogrudanlar.length) return null;
+      if (dfbPrimDisi && dfbPrimHaricMi(urunMarka)) return null;
       for (const d of dogrudanlar) {
         if (markaGrubunda(d.markalar, urunMarka, markaGrupMap)) return d;
-      }
-      if (dfbPrimHaricMi(urunMarka)) return null;
-      const parfumSayisi = parfumSayisiByMagaza.get(magazaId) || 0;
-      if (parfumSayisi >= 2) {
-        const soGrup = markaGrupMap.get(normalizeName(urunMarka));
-        const isParfum = normalizeName(aks || "").includes("PARFUM");
-        const puigAtama = dogrudanlar.find((d) => puigUzmanGrubuMu(d.grup_adi));
-        const hgdAtama = dogrudanlar.find((d) => hgdPuigKesilirGrubuMu(d.grup_adi));
-        if (puigAtama && isParfum && hgdMarkaMi(urunMarka, soGrup)) return null;
-        if (hgdAtama && isParfum && puigMarkaMi(urunMarka, soGrup)) return null;
       }
       return dogrudanlar[0];
     }
@@ -654,6 +670,7 @@ async function hesapla(donemId, options = {}) {
     // Sevil DIOR kolonları: grupta DIOR olmasa bile (DG+LP, Sisley…) DIOR satış dilimi
     // üzerinden Mağaza %0.50 / Parfüm ilk 2 %0.33 (Excel Prim Hesaplama M/O)
     const sevilDiorEsas = new Map(); // "uzman|magaza" -> DIOR prime esas
+    const beymenMarkaEsas = []; // Beymen özel cilt: markanın kendi prime esası
     const beyanDurumGuncelle = []; // { id, durum } — satır satır UPDATE yerine toplu
 
     for (const b of beyanlar) {
@@ -665,6 +682,14 @@ async function hesapla(donemId, options = {}) {
         continue;
       }
       const soMagazaId = resolveSoMagaza(b.uzman_id, b.magaza_id);
+      if (soMagazaId == null) {
+        hesapSatirlari.push([
+          donemId, b.id, b.uzman_id, b.magaza_id, null, b.uniq_kod_id,
+          b.urun_id, b.adet, 0, 0, 0, "Mağazada Eşleşmeyen Satış",
+        ]);
+        beyanDurumGuncelle.push({ id: b.id, durum: "atama_yok" });
+        continue;
+      }
       const bSo = { ...b, magaza_id: soMagazaId };
       const atama = bolumSec(b.uzman_id, soMagazaId, urunMarka, b.urun_aks);
       const isDiorUrun = normalizeName(urunMarka).includes("DIOR");
@@ -698,6 +723,14 @@ async function hesapla(donemId, options = {}) {
       }
 
       const { primAdet, birim, aciklama, primeEsas } = selloutEsle(bSo);
+      if (primeEsas > 0 && normalizeName(magazaBayi.get(soMagazaId) || "").includes("BEYMEN")) {
+        beymenMarkaEsas.push({
+          uzmanId: b.uzman_id,
+          magazaId: soMagazaId,
+          marka: urunMarka,
+          esas: primeEsas,
+        });
+      }
       if (isDiorUrun && isSevilMag && primeEsas > 0) {
         const dk = `${b.uzman_id}|${soMagazaId}`;
         sevilDiorEsas.set(dk, (sevilDiorEsas.get(dk) || 0) + primeEsas);
@@ -782,6 +815,13 @@ async function hesapla(donemId, options = {}) {
 
     // Aynı Sevil mağazada birden fazla bölüm özeti olsa da DIOR kolonları bir kez
     const sevilDiorKolonVerildi = new Set();
+    const beymenCilt = beymenCiltPrimleri({
+      kuralSeti: donem.kural_seti,
+      satirlar: beymenMarkaEsas,
+      siralar: siraList,
+      magazaAd: magazaMap,
+    });
+    const beymenCiltYazildi = new Set();
 
     // ---- 3) Uzman × mağaza bazında kuralları uygula ----
     for (const [key, acc] of ozetMap) {
@@ -925,9 +965,40 @@ async function hesapla(donemId, options = {}) {
       }
 
       const esas = +acc.primeEsas.toFixed(2);
+      // Ağustos Beymen: Byredo ve Penhaligon's ciro %1 yok.
+      // Suadiye'de Byredo %1 kalır. Tersane'de Byredo ve Penhaligon's %1 kalır. DBS %1 kalır.
+      let satisEsas = esas;
+      if (donem.kural_seti === "agustos") {
+        const mag = magazaMap.get(a.magaza_id) || a.prim_magaza || "";
+        if (normalizeName(mag).includes("BEYMEN")) {
+          let dus = 0;
+          for (const x of beymenMarkaEsas) {
+            if (x.uzmanId !== a.uzman_id || x.magazaId !== a.magaza_id) continue;
+            if (!agustosBeymenNicheCiroPrimVar(mag, x.marka)) dus += x.esas;
+          }
+          satisEsas = Math.max(0, +(esas - dus).toFixed(2));
+          if (dus > 0) {
+            detay.push({
+              kural: "Ağustos Beymen Byredo / Penhaligon's ciro primi yok",
+              tip: "satis",
+              esas_baz: satisEsas,
+              dusulen: +dus.toFixed(2),
+            });
+          }
+        }
+      }
       // Excel gibi: 0 esas olan (sadece Mükerrer/Sell-out yok satırları olan)
       // uzman-mağazalar özet listesine girmez — prim rakamı 0 zaten
       if (esas <= 0) continue;
+
+      const ciltKey = `${a.uzman_id}|${a.magaza_id}`;
+      let beymenCiltTutar = 0;
+      if (!beymenCiltYazildi.has(ciltKey) && beymenCilt.has(ciltKey)) {
+        beymenCiltYazildi.add(ciltKey);
+        const cilt = beymenCilt.get(ciltKey);
+        beymenCiltTutar = Number(cilt.tutar) || 0;
+        if (cilt.detay?.length) detay.push(...cilt.detay);
+      }
 
       // NOT: Eskiden burada Excel'in Prim Çalışma sayfasındaki
       // "Sephora Bağdat + Beymen + %0,05" (=%0,5) kolonundan alınmış bir
@@ -936,9 +1007,9 @@ async function hesapla(donemId, options = {}) {
       // Sistemi sade tutmak için kaldırıldı: yalnızca prim_kural tablosundaki
       // kurallar uygulanır. İhtiyaç olursa prim_kural tablosuna eklenmeli.
 
-      const satisPrim = +(esas * satisOran / 100).toFixed(2);
+      const satisPrim = +(satisEsas * satisOran / 100).toFixed(2);
       const hedefPrim = +(esas * hedefOran / 100).toFixed(2);
-      const siralamaPrim = +(esas * siralamaOran / 100 + diorKolonTutar).toFixed(2);
+      const siralamaPrim = +(esas * siralamaOran / 100 + diorKolonTutar + beymenCiltTutar).toFixed(2);
       const bonusPrim = +(esas * bonusOran / 100).toFixed(2);
       const araToplam = satisPrim + hedefPrim + siralamaPrim + bonusPrim;
       const ekPrim = +(araToplam * Number(donem.ek_prim_oran || 0) / 100).toFixed(2);
@@ -963,6 +1034,8 @@ async function hesapla(donemId, options = {}) {
         ]
       );
     }
+
+    await ekleManuelBirolTutarlari(conn, donem);
 
     await conn.query("UPDATE donem SET durum='hesaplandi' WHERE id=?", [donemId]);
     if (ownsConnection) await conn.commit();

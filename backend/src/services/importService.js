@@ -203,21 +203,40 @@ function bayiTahminEt(magazaAdi, bayiHam, mevcutBayi) {
   return "";
 }
 
-/** Klasik master + Sell-Out Mağaza / Prim Grup pivot (Toplam satırları + boş mağaza taşır). */
+function uzmanToplamMi(ad) {
+  const n = normalizeName(ad);
+  return !!n && (n === "GENEL TOPLAM" || n.endsWith(" TOPLAM"));
+}
+
+/** Klasik master + Sell-Out Mağaza / Prim Grup pivot.
+ *  İsim ve grup yalnız ilk satırda yazılıysa alttaki mağazalar aynı uzmana aittir.
+ *  Toplam satırı taşınmaz.
+ */
 function uzmanMagazaSatirlariniAc(rows) {
   const out = [];
   let sonMagaza = "";
+  let sonUzman = "";
+  let sonGrup = "";
   for (const row of rows) {
+    const uzmanHam = uzmanKolonuAl(row);
     const magHam = magazaKolonuAl(row);
-    if (magHam && toplamSatirMi(magHam)) continue;
+    if (uzmanToplamMi(uzmanHam) || (magHam && toplamSatirMi(magHam))) {
+      sonMagaza = "";
+      sonUzman = "";
+      sonGrup = "";
+      continue;
+    }
+    if (uzmanHam) sonUzman = uzmanHam;
+    const grupHam = grupKolonuAl(row);
+    if (grupHam) sonGrup = grupHam;
     if (magHam) sonMagaza = magHam;
+    const uzmanAd = uzmanHam || sonUzman;
     const magaza = magHam || sonMagaza;
-    const uzmanAd = uzmanKolonuAl(row);
     if (!magaza || !uzmanAd || toplamSatirMi(magaza)) continue;
     out.push({
       magaza,
       uzmanAd,
-      grup: grupKolonuAl(row),
+      grup: grupHam || sonGrup,
       bayiHam: pick(row, "BAYİ", "BAYI"),
       magazaAdi: String(pick(row, "MAĞAZA", "MAGAZA") || magaza).trim(),
       magazaKodu: pick(row, "MAĞAZA KODU", "MAGAZA KODU") || null,

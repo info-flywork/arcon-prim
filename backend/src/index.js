@@ -7,6 +7,7 @@ require("dotenv").config();
 const pool = require("./db");
 const { importZeops, importSellout, importHedef, importSiralama, importUzmanMagaza, importStok } = require("./services/importService");
 const { hesapla, markaGrubunda, genisletMarkalar, grupAdindanMarkaAnahtarlari } = require("./services/hesapService");
+const { agustosBeymenNicheCiroPrimVar } = require("./services/beymenCiltKural");
 const { normalizeName } = require("./util");
 const {
   normalizeCanonicalCode,
@@ -18,8 +19,10 @@ const {
 } = require("./services/productService");
 const { getUniqFarklar } = require("./services/uniqFarkService");
 const { loadUniqBridge } = require("./services/uniqBridge");
+const { manuelPrimCalismaSatirlari } = require("./services/manuelBirolTutar");
 const {
   grupDisiSatiriMi,
+  dfbPrimHaricMi,
   parfumUzmanSayisiHaritasi,
 } = require("./services/grupDisiKural");
 const {
@@ -30,6 +33,30 @@ const {
   parseYearMonth,
 } = require("./services/demoSelloutNormalize");
 const { saveDemoSonuc, loadDemoSonuc, readXlsxBuffer } = require("./services/demoSelloutStore");
+const {
+  normalizeSiralamFiles,
+  toSiralamXlsxBuffer,
+} = require("./services/demoSiralamNormalize");
+const {
+  saveSiralamSonuc,
+  loadSiralamSonuc,
+  readSiralamXlsxBuffer,
+  MAGAZA_MAP_DOSYALARI,
+  loadMagazaMap,
+  loadMagazaMapSatirlari,
+  aktifMagazaFlatMap,
+  saveMagazaMap,
+} = require("./services/demoSiralamStore");
+const {
+  normalizeHedefFiles,
+  toHedefXlsxBuffer,
+} = require("./services/demoHedefNormalize");
+const { loadZeopsMagazaIndex } = require("./services/demoZeopsMagaza");
+const {
+  saveHedefSonuc,
+  loadHedefSonuc,
+  readHedefXlsxBuffer,
+} = require("./services/demoHedefStore");
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 80 * 1024 * 1024 } });
@@ -75,10 +102,34 @@ function donemAd(yil, ay) {
 let donemSyncPromise = null;
 
 /** İçinde bulunulan yılın sonuna kadar eksik ayları açar (gelecek aylar UI'da disabled). */
+async function ensureKuralSetiKolonu() {
+  const [cols] = await pool.query("SHOW COLUMNS FROM donem LIKE 'kural_seti'");
+  if (cols.length) return;
+  await pool.query(
+    "ALTER TABLE donem ADD COLUMN kural_seti VARCHAR(16) NULL DEFAULT NULL"
+  );
+}
+
+/** DFB (Narciso / Issey / Zadig) prim dışı. Varsayılan açık — Birol ile aynı. */
+async function ensureDfbPrimDisiKolonu() {
+  const [cols] = await pool.query("SHOW COLUMNS FROM donem LIKE 'dfb_prim_disi'");
+  if (cols.length) return;
+  await pool.query(
+    "ALTER TABLE donem ADD COLUMN dfb_prim_disi TINYINT(1) NOT NULL DEFAULT 1"
+  );
+}
+
+function dfbPrimDisiAcikMi(flag) {
+  if (flag == null || flag === "") return true;
+  return Number(flag) === 1;
+}
+
 async function donemleriSenkronizeEt() {
   if (donemSyncPromise) return donemSyncPromise;
 
   donemSyncPromise = (async () => {
+    await ensureKuralSetiKolonu();
+    await ensureDfbPrimDisiKolonu();
     const simdi = new Date();
     const bitisYil = simdi.getFullYear();
     const bitisAy = 12; // bu yılın kalan ayları listede görünsün
@@ -181,6 +232,32 @@ app.post("/api/donemler/yeni-yil", wrap(async (req, res) => {
   });
 }));
 
+app.patch("/api/donem/:id/kural-seti", wrap(async (req, res) => {
+  await ensureKuralSetiKolonu();
+  const donemId = Number(req.params.id);
+  const ham = req.body?.kural_seti;
+  const set = ham == null || ham === "" ? null : String(ham).toLocaleLowerCase("tr-TR");
+  if (set && set !== "agustos" && set !== "eylul") {
+    return res.status(400).json({ hata: "kural_seti agustos, eylul veya bos olmali" });
+  }
+  const [[varMi]] = await pool.query("SELECT id FROM donem WHERE id=?", [donemId]);
+  if (!varMi) return res.status(404).json({ hata: "Dönem bulunamadı" });
+  await pool.query("UPDATE donem SET kural_seti=? WHERE id=?", [set, donemId]);
+  const [[d]] = await pool.query("SELECT * FROM donem WHERE id=?", [donemId]);
+  res.json(d);
+}));
+
+app.patch("/api/donem/:id/dfb-prim-disi", wrap(async (req, res) => {
+  await ensureDfbPrimDisiKolonu();
+  const donemId = Number(req.params.id);
+  const acik = req.body?.dfb_prim_disi === false || Number(req.body?.dfb_prim_disi) === 0 ? 0 : 1;
+  const [[varMi]] = await pool.query("SELECT id FROM donem WHERE id=?", [donemId]);
+  if (!varMi) return res.status(404).json({ hata: "Dönem bulunamadı" });
+  await pool.query("UPDATE donem SET dfb_prim_disi=? WHERE id=?", [acik, donemId]);
+  const [[d]] = await pool.query("SELECT * FROM donem WHERE id=?", [donemId]);
+  res.json(d);
+}));
+
 app.post("/api/donemler", wrap(async (req, res) => {
   const { yil, ay } = req.body;
   if (!yil || !ay) return res.status(400).json({ hata: "yil ve ay zorunlu" });
@@ -226,10 +303,10 @@ function importJobTemizle() {
   }
 }
 
-/** Demo: çoklu ham sell-out → Arcon tek Sell-out CSV (importSellout kolonları). DB'ye yazmaz. */
+/** Demo: ham hedef (sol tablo) → Arcon marka satırları + özet sheet. DB'ye yazmaz. */
 app.post(
-  "/api/demo/sellout/normalize",
-  upload.array("dosyalar", 20),
+  "/api/demo/hedef/normalize",
+  upload.array("dosyalar", 10),
   wrap(async (req, res) => {
     const files = req.files || [];
     if (!files.length) {
@@ -240,6 +317,190 @@ app.post(
       buffer: f.buffer,
       dosyaAdi: Buffer.from(f.originalname, "latin1").toString("utf8"),
     }));
+    const sonuc = normalizeHedefFiles(packed, { yearMonth });
+    const xlsxBuffer = await toHedefXlsxBuffer(sonuc);
+    const kayit = saveHedefSonuc(sonuc, xlsxBuffer, {
+      yearMonth,
+      dosyaAdlari: packed.map((f) => f.dosyaAdi),
+    });
+    res.json({
+      ...kayit,
+      uyari: [
+        ...(sonuc.uyari || []),
+        "Local demo — dönem hedef tablosuna yazılmaz. Excel: /api/demo/hedef/xlsx",
+      ],
+    });
+  })
+);
+
+app.get(
+  "/api/demo/hedef/sonuc",
+  wrap(async (req, res) => {
+    const kayit = loadHedefSonuc();
+    if (!kayit) {
+      return res.status(404).json({ hata: "Kayıtlı demo hedef yok — önce Üret." });
+    }
+    res.json(kayit);
+  })
+);
+
+app.get("/api/demo/hedef/xlsx", (req, res) => {
+  const buf = readHedefXlsxBuffer();
+  if (!buf) {
+    return res.status(404).json({ hata: "Excel yok — önce Üret." });
+  }
+  const ym = String(req.query.ym || "demo").replace(/[^\w.-]+/g, "_");
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="arcon_hedef_${ym}.xlsx"; filename*=UTF-8''arcon_hedef_${encodeURIComponent(ym)}.xlsx`
+  );
+  res.send(buf);
+});
+
+/** Demo: ham mağaza sıralama → Temmuz Sıralama Data formatı. DB'ye yazmaz. */
+app.post(
+  "/api/demo/siralam/normalize",
+  upload.fields([
+    { name: "dosyalar", maxCount: 20 },
+    { name: "zeops", maxCount: 1 },
+  ]),
+  wrap(async (req, res) => {
+    const files = req.files?.dosyalar || [];
+    const zeopsFile = (req.files?.zeops || [])[0];
+    if (!files.length) {
+      return res.status(400).json({ hata: "Dosya yok (form alanı: dosyalar)" });
+    }
+    if (!zeopsFile) {
+      return res.status(400).json({
+        hata: "Zeops ham data gerekli. Zeops’ta olmayan mağaza sıralamadan elenir.",
+      });
+    }
+    const yearMonth = String(req.body.yearMonth || req.query.yearMonth || "").trim() || null;
+    const packed = files.map((f) => ({
+      buffer: f.buffer,
+      dosyaAdi: Buffer.from(f.originalname, "latin1").toString("utf8"),
+    }));
+    const zeopsIndex = loadZeopsMagazaIndex(zeopsFile.buffer);
+    if (!zeopsIndex.adet) {
+      return res.status(400).json({ hata: "Zeops dosyasında Mağaza kolonu / satır bulunamadı." });
+    }
+    const sonuc = normalizeSiralamFiles(packed, { yearMonth, zeopsIndex });
+    const xlsxBuffer = toSiralamXlsxBuffer(sonuc.satirlar);
+    const kayit = saveSiralamSonuc(sonuc, xlsxBuffer, {
+      yearMonth,
+      dosyaAdlari: packed.map((f) => f.dosyaAdi),
+    });
+    res.json({
+      ...kayit,
+      uyari: [
+        ...(sonuc.uyari || []),
+        "Local demo — dönem sıralama tablosuna yazılmaz. Excel: /api/demo/siralam/xlsx",
+      ],
+    });
+  })
+);
+
+app.get(
+  "/api/demo/siralam/sonuc",
+  wrap(async (req, res) => {
+    const kayit = loadSiralamSonuc();
+    if (!kayit) {
+      return res.status(404).json({ hata: "Kayıtlı demo sıralama yok — önce Üret." });
+    }
+    res.json(kayit);
+  })
+);
+
+app.get("/api/demo/siralam/xlsx", (req, res) => {
+  const buf = readSiralamXlsxBuffer();
+  if (!buf) {
+    return res.status(404).json({ hata: "Excel yok — önce Üret." });
+  }
+  const ym = String(req.query.ym || "demo").replace(/[^\w.-]+/g, "_");
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="arcon_siralam_${ym}.xlsx"; filename*=UTF-8''arcon_siralam_${encodeURIComponent(ym)}.xlsx`
+  );
+  res.send(buf);
+});
+
+/** Demo: mağaza eşleştirme JSON (boyner / sevil / beymen) */
+app.get(
+  "/api/demo/siralam/magaza-map",
+  wrap(async (req, res) => {
+    const kanal = String(req.query.kanal || "boyner").toLowerCase();
+    if (!MAGAZA_MAP_DOSYALARI[kanal]) {
+      return res.status(400).json({
+        hata: `kanal: ${Object.keys(MAGAZA_MAP_DOSYALARI).join(" | ")}`,
+      });
+    }
+    const satirlari = loadMagazaMapSatirlari(kanal);
+    const map = aktifMagazaFlatMap(kanal);
+    res.json({
+      kanal,
+      adet: satirlari.length,
+      aktifAdet: satirlari.filter((s) => s.aktif).length,
+      pasifAdet: satirlari.filter((s) => !s.aktif).length,
+      map,
+      satirlari,
+    });
+  })
+);
+
+app.put(
+  "/api/demo/siralam/magaza-map",
+  wrap(async (req, res) => {
+    const kanal = String(req.body?.kanal || req.query.kanal || "boyner").toLowerCase();
+    if (!MAGAZA_MAP_DOSYALARI[kanal]) {
+      return res.status(400).json({
+        hata: `kanal: ${Object.keys(MAGAZA_MAP_DOSYALARI).join(" | ")}`,
+      });
+    }
+    const input = Array.isArray(req.body?.satirlari)
+      ? req.body.satirlari
+      : req.body?.map || {};
+    const kayit = saveMagazaMap(kanal, input);
+    res.json({ ...kayit, kaydedildi: true });
+  })
+);
+
+/** Demo: çoklu ham sell-out → Arcon tek Sell-out CSV (importSellout kolonları). DB'ye yazmaz. */
+app.post(
+  "/api/demo/sellout/normalize",
+  upload.fields([
+    { name: "dosyalar", maxCount: 20 },
+    { name: "zeops", maxCount: 1 },
+  ]),
+  wrap(async (req, res) => {
+    const files = req.files?.dosyalar || [];
+    const zeopsFile = (req.files?.zeops || [])[0];
+    if (!files.length) {
+      return res.status(400).json({ hata: "Dosya yok (form alanı: dosyalar)" });
+    }
+    if (!zeopsFile) {
+      return res.status(400).json({
+        hata: "Zeops ham data gerekli. Zeops’ta olmayan mağaza sell-out’tan elenir.",
+      });
+    }
+    const yearMonth = String(req.body.yearMonth || req.query.yearMonth || "").trim() || null;
+    const packed = files.map((f) => ({
+      buffer: f.buffer,
+      dosyaAdi: Buffer.from(f.originalname, "latin1").toString("utf8"),
+    }));
+    const zeopsIndex = loadZeopsMagazaIndex(zeopsFile.buffer);
+    if (!zeopsIndex.adet) {
+      return res.status(400).json({ hata: "Zeops dosyasında Mağaza kolonu / satır bulunamadı." });
+    }
     // Barkod → Arcon Ref (stok_kodu); Sevil ham Ürün Kodu (KT-…) değil
     const refByBarkod = {};
     try {
@@ -256,7 +517,7 @@ app.post(
     } catch (e) {
       console.error("demo refByBarkod:", e.message);
     }
-    const sonuc = normalizeSelloutFiles(packed, { yearMonth, refByBarkod });
+    const sonuc = normalizeSelloutFiles(packed, { yearMonth, refByBarkod, zeopsIndex });
     const kayit = await saveDemoSonuc(sonuc, {
       yearMonth,
       dosyaAdlari: packed.map((f) => f.dosyaAdi),
@@ -1410,7 +1671,7 @@ app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
 // ============================================================================
 // Kolonlar (E—Y):
 //  E: Prime Esas Toplam Tutar        = SUM(prim_hesap_satir.prime_esas_tutar)
-//  F: Prim %1                         = E × 0.01 (herkese sabit baseline)
+//  F: Prim %1                         = taban × 0.01 (Ağustos Byredo/Penhaligon's kesildiyse esas_baz)
 //  G: Toplam Sephora Sensai +%1      = Sensai×Sephora için E × 0.01 (kalan satış farkı)
 //  H: Sephora Bağdat + Beymen +%0,5  = BEYMEN bayisi VEYA Sephora Bağdat → E × 0.005
 //  I: Toplam Sevil LP                 = LP grubu Sevil noktası → E × 0.005
@@ -1427,6 +1688,11 @@ app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
 //  X: Prim Açıklama                    = özel notlar (varsa)
 //  Y: Toplam Prim Yüzdesi              = W / E
 async function primRaporuVerisi(donemId) {
+  const [[donemKural]] = await pool.query(
+    "SELECT kural_seti FROM donem WHERE id=?",
+    [donemId]
+  );
+  const kuralSeti = String(donemKural?.kural_seti || "");
   // Ana veri: prim_ozet + uzman + magaza + prim_bolum
   const [rows] = await pool.query(
     `SELECT o.*, u.ad_soyad, m.prim_magaza, m.bayi,
@@ -1532,8 +1798,13 @@ async function primRaporuVerisi(donemId) {
     const isTumParfum = grupAdi.includes("TUM MARKA")
       || (grupAdi.includes("PARFUM") && grupAdi.includes("TUM"));
 
-    // F: baseline %1 (herkes)
-    const F = +(E * 0.01).toFixed(2);
+    let detay = [];
+    try { detay = Array.isArray(r.detay_json) ? r.detay_json : JSON.parse(r.detay_json || "[]"); } catch {}
+
+    // F: baseline %1. Ağustos Beymen'de Byredo / Penhaligon's kesildiyse taban esas_baz.
+    const ciroKes = detay.find((d) => d.tip === "satis" && d.esas_baz != null && Number(d.dusulen) > 0);
+    const fEsas = ciroKes ? Number(ciroKes.esas_baz) : E;
+    const F = +(fEsas * 0.01).toFixed(2);
 
     // Bölüm satış oranı - toplam satış primi / E ≈ bölüm oranı
     const bolumOran = E > 0 ? satisPrim / E : 0; // ör: 0.01, 0.015, 0.02
@@ -1568,14 +1839,20 @@ async function primRaporuVerisi(donemId) {
       I = +(E * 0.005).toFixed(2);
     }
 
+    // Ağustos / Eylül anahtarı açıkken H, düz %0,5 yerine Beymen cilt kuralının tutarıdır.
+    if (kuralSeti === "agustos" || kuralSeti === "eylul") {
+      H = +detay
+        .filter((d) => d.tuttu && (d.tip === "beymen_cilt" || d.kriter === "beymen_cilt"))
+        .reduce((a, d) => a + Number(d.tutar || 0), 0)
+        .toFixed(2);
+    }
+
     // J: bonus toplamı
     const J = +(F + G + H + I).toFixed(2);
 
     // L: Hedef Prim %0.5 (hedef tutuyorsa)
     // Sistem detay_json'da "hedef_tutarsa" veya "ciro_hedefi" kuralı tutmuş mu bakmalı
     let L = 0;
-    let detay = [];
-    try { detay = Array.isArray(r.detay_json) ? r.detay_json : JSON.parse(r.detay_json || "[]"); } catch {}
     const ciroHedefDetay = detay.find((d) =>
       (d.kriter === "ciro_hedefi" || d.kriter === "ciro_hedefi_kosullu" || d.kriter === "hedef_tutarsa")
     );
@@ -1635,7 +1912,10 @@ async function primRaporuVerisi(donemId) {
         && !/DIOR/i.test(String(d.kural || ""))
         && (d.kriter === "siralama_marka" || d.kriter === "parfum_siralama" || d.kriter === "kumul_siralama")
       );
-      let kalan = Math.max(0, siralamaPrim - diorKalem);
+      const ciltKalem = detay
+        .filter((d) => d.tuttu && (d.tip === "beymen_cilt" || d.kriter === "beymen_cilt"))
+        .reduce((a, d) => a + Number(d.tutar || 0), 0);
+      let kalan = Math.max(0, siralamaPrim - diorKalem - ciltKalem);
       for (const k of parfumKurallari) {
         const oran = Number(k.oran || 0);
         const tutar = +(E * oran / 100).toFixed(2);
@@ -1670,6 +1950,7 @@ async function primRaporuVerisi(donemId) {
       magaza_id: r.magaza_id,
       satis_grup: raporSatisGrupEtiketi(r.grup_adi, markalar),
       E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y,
+      dusulen: ciroKes ? Number(ciroKes.dusulen) || 0 : 0,
     };
   }
 
@@ -1716,6 +1997,27 @@ async function primRaporuVerisi(donemId) {
       }
       row.Y = row.E > 0 ? +(Number(row.W) / row.E).toFixed(4) : 0;
       out.push(row);
+    }
+    const dusulen = Number(base.dusulen) || 0;
+    if (dusulen > 0) {
+      const sirali = [...out].sort((a, b) => {
+        const ap = String(a.satis_grup || "").toLocaleUpperCase("tr-TR") === "PARFÜM" ? 0 : 1;
+        const bp = String(b.satis_grup || "").toLocaleUpperCase("tr-TR") === "PARFÜM" ? 0 : 1;
+        return ap - bp;
+      });
+      let kalanDus = dusulen;
+      for (const row of sirali) {
+        const kes = Math.min(kalanDus, Number(row.E) || 0);
+        kalanDus = +(kalanDus - kes).toFixed(2);
+        row.F = +((Number(row.E) - kes) * 0.01).toFixed(2);
+      }
+      const hedefF = +Number(base.F || 0).toFixed(2);
+      const yazilan = +out.reduce((s, row) => s + Number(row.F), 0).toFixed(2);
+      const fark = +(hedefF - yazilan).toFixed(2);
+      if (fark && out.length) {
+        const hedef = out.find((row) => Number(row.F) > 0) || out[0];
+        hedef.F = +(Number(hedef.F) + fark).toFixed(2);
+      }
     }
     return out;
   }
@@ -1788,16 +2090,8 @@ const PRIM_SATIR_KOLONLAR = [
   { key: "birlestirilmis_isim", ad: "Birleştirilmiş İsim", renk: "mavi" },
   { key: "ad_soyad", ad: "Uzman Ad-Soyad", renk: "mavi" },
   { key: "prim_grup", ad: "Prim Grup", renk: "mavi" },
-  { key: "islem_tarihi", ad: "İşlem Tarihi", renk: "acik" },
-  { key: "durum", ad: "Durum", renk: "acik" },
-  { key: "satis_tarihi", ad: "Satış Tarihi", renk: "acik" },
-  { key: "magaza_ham", ad: "Mağaza", renk: "acik" },
   { key: "sellout_magaza", ad: "Sell-Out Mağaza", renk: "acik" },
-  { key: "barkod", ad: "Barkod", renk: "acik" },
-  { key: "kod", ad: "Kod", renk: "acik" },
-  { key: "etiket", ad: "Etiket", renk: "acik" },
   { key: "arcon_referans", ad: "Arcon Referans", renk: "acik" },
-  { key: "arcon_ref_adi", ad: "Arcon Ref Adı", renk: "acik" },
   { key: "arcon_barkod", ad: "Arcon Barkod", renk: "acik" },
   { key: "marka", ad: "Marka", renk: "acik" },
   { key: "satis_grup", ad: "Satış Grup", renk: "acik" },
@@ -1808,19 +2102,13 @@ const PRIM_SATIR_KOLONLAR = [
   { key: "magaza_toplam_satis", ad: "Mağaza Toplam Satış", renk: "sari" },
   { key: "kontrol", ad: "Kontrol", renk: "sari" },
   { key: "rapor_aciklama", ad: "Rapor Açıklama", renk: "sari" },
-  { key: "odenen_adet", ad: "Ödenen Adet", renk: "acik" },
-  { key: "prim_adet", ad: "Prim Hesaplanan Adet", renk: "yesil" },
-  { key: "adet", ad: "Adet", renk: "acik" },
-  { key: "fiyat", ad: "Fiyat", renk: "acik" },
-  { key: "toplam", ad: "Toplam", renk: "acik" },
+  { key: "odenen_adet", ad: "Adet", renk: "acik" },
   { key: "satis_notlari", ad: "Satış Notları", renk: "acik" },
-  { key: "mukerrer_adet", ad: "Mükerrer Adet", renk: "yesil" },
-  { key: "prim_adet_net", ad: "Net Prim Adet", renk: "yesil" },
+  { key: "prim_adet", ad: "Prim Hesaplanan Adet", renk: "yesil" },
   { key: "sellout_adet", ad: "Sell-Out Adet", renk: "yesil" },
   { key: "magaza_kdv_haric_ciro", ad: "Mağaza KDV Hariç Ciro", renk: "yesil" },
   { key: "birim_ciro", ad: "Prime Esas Birim Ciro", renk: "yesil" },
   { key: "prime_esas_tutar", ad: "Prime Esas Toplam Tutar", renk: "yesil" },
-  { key: "prime_esas_tutar_net", ad: "Net Prime Esas Toplam Tutar", renk: "yesil" },
   { key: "prim_yuzde_1", ad: "Prim % 1", renk: "yesil" },
   { key: "sephora_sensai", ad: "Sephora Sensai + %1", renk: "yesil" },
   { key: "sephora_bagdat_beymen", ad: "Sephora Bağdat + Beymen + % 0,05", renk: "yesil" },
@@ -1959,16 +2247,15 @@ function aksTemizle(aks) {
     .trim();
 }
 
-/** Excel SATIŞ TÜRÜ: Grup Dışı = 2+ parfüm sorumlusunda Puig/HGD kombin kendi grubu dışındaki satış (karşı grup + Dior). */
+/** Excel SATIŞ TÜRÜ: Grup Satış, Grup Dışı, DFB GRUP PRİM DIŞI. */
 function satisTuruHesapla(eslesmeDurum, hesapId, extra = {}) {
-  const acik = String(extra.aciklama || extra.hAciklama || "").toLocaleLowerCase("tr-TR");
-  if (acik.includes("eşleşmeyen") || acik.includes("eslesmeyen")) return "Prim Hesaplama Dışı";
-  if (eslesmeDurum === "atama_yok" && grupDisiSatiriMi(extra)) return "Grup Dışı";
-  if (["urun_yok", "magaza_yok", "uzman_yok", "atama_yok"].includes(eslesmeDurum)) {
-    return "Prim Hesaplama Dışı";
+  if (dfbPrimDisiAcikMi(extra.dfbPrimDisi) && dfbPrimHaricMi(extra.marka)) {
+    return "DFB GRUP PRİM DIŞI";
   }
+  if (eslesmeDurum === "atama_yok" || grupDisiSatiriMi(extra)) return "Grup Dışı";
   if (hesapId != null) return "Grup Satış";
-  return "Prim Hesaplama Dışı";
+  if (["urun_yok", "magaza_yok", "uzman_yok"].includes(eslesmeDurum)) return "Grup Dışı";
+  return "Grup Satış";
 }
 
 /**
@@ -2069,7 +2356,10 @@ function satirSatisPrimleri(primeEsas, meta) {
   const altKanal = String(meta.altKanal || "").toLocaleUpperCase("tr-TR").trim();
   const bolumAdi = String(meta.bolumAdi || "").toLocaleUpperCase("tr-TR").trim();
 
-  const prim1 = +(E * 0.01).toFixed(2);
+  const marka = meta.marka || "";
+  const kuralSeti = meta.kuralSeti || "";
+  let prim1 = +(E * 0.01).toFixed(2);
+  if (kuralSeti === "agustos" && !agustosBeymenNicheCiroPrimVar(magaza, marka)) prim1 = 0;
   let sensai = 0;
   const isSensaiSephora = bayi === "SEPHORA" && grup.includes("SENSAI");
   const isSisleyCadde = bayi === "SEPHORA" && grup.includes("SISLEY") && bolumAdi.includes("CADDE");
@@ -2144,6 +2434,8 @@ function primSatirlariBirlesir(satirlar) {
       grup: t.bolum_markalar || t.prim_grup,
       altKanal: t.alt_kanal,
       bolumAdi: t.bolum_adi,
+      marka: t.marka,
+      kuralSeti: t.kural_seti,
     }));
   }
   return sirali;
@@ -2156,21 +2448,20 @@ const SATIR_FILTRE_EXPR = {
   soyad: "COALESCE(b.soyad, '')",
   ad_soyad: "COALESCE(u.ad_soyad, b.uzman_ham, '')",
   prim_grup: "COALESCE(a.grup_adi, '')",
-  durum: "COALESCE(b.durum, '')",
-  magaza_ham: "COALESCE(b.magaza_ham, '')",
   sellout_magaza: "COALESCE(mso.prim_magaza, m.prim_magaza, b.magaza_ham, '')",
-  barkod: "COALESCE(b.barkod, '')",
-  kod: "COALESCE(b.kod, '')",
-  etiket: "COALESCE(b.etiket, '')",
   marka: "COALESCE(ur.marka, '')",
   uniq_kod: "COALESCE(ur.uniq_kod, b.kod, '')",
   urun_adi: "COALESCE(ur.urun_adi, b.etiket, '')",
   bayi: "COALESCE(mso.bayi, m.bayi, '')",
   satis_turu: `CASE
-    WHEN h.aciklama LIKE '%Eşleşmeyen%' OR h.aciklama LIKE '%eslesmeyen%' THEN 'Prim Hesaplama Dışı'
+    WHEN COALESCE(ur.marka, '') COLLATE utf8mb4_general_ci LIKE '%NARCISO%'
+      OR COALESCE(ur.marka, '') COLLATE utf8mb4_general_ci LIKE '%ISSEY%'
+      OR COALESCE(ur.marka, '') COLLATE utf8mb4_general_ci LIKE '%MIYAKE%'
+      OR COALESCE(ur.marka, '') COLLATE utf8mb4_general_ci LIKE '%ZADIG%'
+    THEN 'DFB GRUP PRİM DIŞI'
     WHEN b.eslesme_durum='atama_yok' THEN 'Grup Dışı'
     WHEN h.id IS NOT NULL THEN 'Grup Satış'
-    ELSE 'Prim Hesaplama Dışı'
+    ELSE 'Grup Dışı'
   END`,
   rapor_aciklama: "COALESCE(h.aciklama, '')",
 };
@@ -2440,12 +2731,22 @@ function primSatirMap(r) {
   } catch {
     bolumMarkalar = String(r.bolum_markalar || "");
   }
-  const primler = satirSatisPrimleri(primeEsasNet, {
+  const satisTuru = satisTuruHesapla(r.eslesme_durum, r.hesap_id, {
+    ...grupDisiExtra(r, aks),
+    aciklama: r.h_aciklama,
+    dfbPrimDisi: r.dfb_prim_disi,
+  });
+  const dfbDisiSatir = satisTuru === "DFB GRUP PRİM DIŞI";
+  const primeEsasGoster = dfbDisiSatir ? 0 : primeEsas;
+  const primeEsasNetGoster = dfbDisiSatir ? 0 : primeEsasNet;
+  const primler = satirSatisPrimleri(primeEsasNetGoster, {
     bayi: r.bayi,
     magaza: r.sellout_magaza || r.magaza_ham,
     grup: bolumMarkalar || r.prim_grup,
     altKanal: r.alt_kanal,
     bolumAdi: r.bolum_adi,
+    marka,
+    kuralSeti: r.kural_seti,
   });
   return {
     beyan_id: r.beyan_id,
@@ -2483,24 +2784,25 @@ function primSatirMap(r) {
     fiyat: r.fiyat != null ? Number(r.fiyat) : null,
     toplam: r.toplam != null ? Number(r.toplam) : null,
     satis_notlari: r.satis_notlari || "",
-    prim_adet: primAdet,
-    odenen_adet: primAdet,
-    mukerrer_adet: mukerrerAdet,
-    prim_adet_net: primAdetNet,
+    prim_adet: dfbDisiSatir ? 0 : primAdet,
+    odenen_adet: dfbDisiSatir ? 0 : primAdet,
+    mukerrer_adet: dfbDisiSatir ? 0 : mukerrerAdet,
+    prim_adet_net: dfbDisiSatir ? 0 : primAdetNet,
     sellout_adet: selloutAdet,
     magaza_kdv_haric_ciro: selloutCiro,
     birim_ciro: r.birim_ciro != null ? Number(r.birim_ciro) : (selloutAdet > 0 ? +(selloutCiro / selloutAdet).toFixed(2) : null),
-    prime_esas_tutar: primeEsas,
-    prime_esas_tutar_net: primeEsasNet,
+    prime_esas_tutar: primeEsasGoster,
+    prime_esas_tutar_net: primeEsasNetGoster,
     ...primler,
     bayi: r.bayi || "",
-    satis_turu: satisTuruHesapla(r.eslesme_durum, r.hesap_id, { ...grupDisiExtra(r, aks), aciklama: r.h_aciklama }),
+    satis_turu: satisTuru,
     nokta_uzman_sayisi: r.nokta_uzman_sayisi != null ? Number(r.nokta_uzman_sayisi) : null,
     eslesme_durum: r.eslesme_durum || "",
     hesap_id: r.hesap_id,
     bolum_adi: r.bolum_adi || "",
     alt_kanal: r.alt_kanal || "",
     bolum_markalar: bolumMarkalar,
+    kural_seti: r.kural_seti || "",
   };
 }
 
@@ -2511,6 +2813,8 @@ function satisPrimiKolonlariniYenile(s) {
     grup: s.bolum_markalar || s.prim_grup,
     altKanal: s.alt_kanal,
     bolumAdi: s.bolum_adi,
+    marka: s.marka,
+    kuralSeti: s.kural_seti,
   });
   s.prim_yuzde_1 = primler.prim_yuzde_1;
   s.sephora_sensai = primler.sephora_sensai;
@@ -2671,6 +2975,17 @@ function mukerrerSatiriniAltaAyir(satirlar) {
 
 async function satirSatirlariHazirla(donemId, rows) {
   if (rows?.length) {
+    await ensureDfbPrimDisiKolonu();
+    const [[donemKural]] = await pool.query(
+      "SELECT kural_seti, dfb_prim_disi FROM donem WHERE id=?",
+      [donemId]
+    );
+    const kuralSeti = String(donemKural?.kural_seti || "");
+    const dfbPrimDisi = donemKural?.dfb_prim_disi;
+    for (const r of rows) {
+      r.kural_seti = kuralSeti;
+      r.dfb_prim_disi = dfbPrimDisi;
+    }
     const ctx = await loadSelloutUniqMap(donemId);
     for (const r of rows) {
       const canon = ctx.canonOf(r.kod, r.barkod, r.uniq_kod);
@@ -2801,7 +3116,11 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   const aciklama = String(req.query.aciklama || "").trim();
   const kolonFiltre = parseKolonFiltre(req.query.filtre);
 
-  const [[donem]] = await pool.query("SELECT id, ad FROM donem WHERE id=?", [donemId]);
+  await ensureDfbPrimDisiKolonu();
+  const [[donem]] = await pool.query(
+    "SELECT id, ad, kural_seti, dfb_prim_disi FROM donem WHERE id=?",
+    [donemId]
+  );
   if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı" });
 
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
@@ -2828,7 +3147,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   function satirDolgu(s) {
     const t = String(s.satis_turu || "").toLocaleLowerCase("tr-TR");
     const a = String(s.rapor_aciklama || "").toLocaleLowerCase("tr-TR");
-    if (t.includes("grup dışı") || a.includes("atama yok")) {
+    if (t.includes("grup dışı") || t.includes("dfb") || a.includes("atama yok")) {
       return "FFFCE4D6";
     }
     if (a.includes("mükerrer")) return "FFFCE4D6";
@@ -2891,6 +3210,11 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   ]);
   const uzmanUrunToplam = buildUzmanUrunToplamMap(rows);
   enrichRowsSelloutFromMap(rows, selloutCtx);
+  const kuralSeti = String(donem.kural_seti || "");
+  for (const r of rows) {
+    r.kural_seti = kuralSeti;
+    r.dfb_prim_disi = donem.dfb_prim_disi;
+  }
   applyNoktaUzmanSayisi(rows, noktaMap);
   applyParfumUzmanSayisi(rows, parfumMap);
 
@@ -2925,6 +3249,24 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
         }
       });
     }
+    row.commit();
+  }
+
+  for (const s of manuelPrimCalismaSatirlari(donem)) {
+    const degerler = PRIM_SATIR_KOLONLAR.map((k) => {
+      const v = s[k.key];
+      if (v == null || v === "") return "";
+      if (sayiKolon.has(k.key)) return Number(v);
+      return v;
+    });
+    const row = ws.addRow(degerler);
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      const k = PRIM_SATIR_KOLONLAR[col - 1];
+      if (k && sayiKolon.has(k.key)) {
+        cell.alignment = { horizontal: "right" };
+        if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
+      }
+    });
     row.commit();
   }
 

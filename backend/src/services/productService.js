@@ -327,8 +327,8 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
     onProgress?.({ asama: "esleme", yapilan: 0, toplam: 1, adim: "atama" });
 
     if (ownsConnection) await conn.beginTransaction();
-    // Uzman-mağaza Excel master'a sadık kal: Zeops'ta başka mağazada satış
-    // görünce atama kopyalama KAPALI (Bozdağ Akasya + Marmara Forum bug'ı).
+    // Zeops’ta satış görülen mağaza, uzmanın senaryosu varsa prime girer.
+    // Kopya hesapta yapılır; burada yalnızca eşleşme tazelenir.
     const atamaEklenen = 0;
     await relinkDonemBeyan(conn, donemId);
     if (ownsConnection) await conn.commit();
@@ -459,39 +459,54 @@ async function remapPeriod(donemId, connection = null, opts = {}) {
   }
 }
 
-/** Zeops’ta satışı görünen uzman-mağaza için master’da atama yoksa, uzmanın mevcut senaryosunu kopyala. */
+/**
+ * Zeops beyanında satış görülen mağaza master atamada yoksa,
+ * uzmanın mevcut senaryosunu (bölüm / grup) o mağazaya kopyala.
+ * Master’da hiç ataması olmayan uzman kopyalanmaz.
+ * Mağazada zaten bir atama varsa üzerine ikinci bölüm eklenmez.
+ */
 async function tamamlaEksikAtamalar(conn, donemId) {
-  const [eksik] = await conn.query(
-    `SELECT DISTINCT b.uzman_id, b.magaza_id
-     FROM satis_beyan b
-     WHERE b.donem_id=? AND b.uzman_id IS NOT NULL AND b.magaza_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM uzman_atama a
-         WHERE a.donem_id=b.donem_id AND a.uzman_id=b.uzman_id AND a.magaza_id=b.magaza_id
-       )
-       AND EXISTS (
-         SELECT 1 FROM uzman_atama a2
-         WHERE a2.donem_id=b.donem_id AND a2.uzman_id=b.uzman_id
-       )`,
-    [donemId]
+  const { GEZICI_ADLAR } = require("./geziciUzman");
+  const ph = GEZICI_ADLAR.map(() => "?").join(",");
+  // Gezici: Zeops mağazasına bayi fark etmeksizin kopyala.
+  // Diğerleri: yalnız dosya atamasıyla aynı bayi ise kopyala.
+  const [result] = await conn.query(
+    `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi, pay_orani, kaynak)
+     SELECT ?, e.uzman_id, e.magaza_id, src.bolum_id, src.grup_adi, src.pay_orani, 'zeops'
+     FROM (
+       SELECT DISTINCT b.uzman_id, b.magaza_id
+       FROM satis_beyan b
+       JOIN magaza mb ON mb.id = b.magaza_id
+       JOIN uzman u ON u.id = b.uzman_id
+       WHERE b.donem_id=? AND b.uzman_id IS NOT NULL AND b.magaza_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM uzman_atama a2
+           WHERE a2.donem_id=b.donem_id AND a2.uzman_id=b.uzman_id AND a2.kaynak='dosya'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM uzman_atama a
+           WHERE a.donem_id=b.donem_id AND a.uzman_id=b.uzman_id AND a.magaza_id=b.magaza_id
+         )
+         AND (
+           u.normal_ad IN (${ph})
+           OR EXISTS (
+             SELECT 1 FROM uzman_atama a3
+             JOIN magaza ma ON ma.id=a3.magaza_id
+             WHERE a3.donem_id=b.donem_id AND a3.uzman_id=b.uzman_id AND a3.kaynak='dosya'
+               AND UPPER(TRIM(ma.bayi)) = UPPER(TRIM(mb.bayi))
+           )
+         )
+     ) e
+     JOIN (
+       SELECT uzman_id, bolum_id, MIN(id) AS id
+       FROM uzman_atama
+       WHERE donem_id=? AND kaynak='dosya'
+       GROUP BY uzman_id, bolum_id
+     ) pick ON pick.uzman_id=e.uzman_id
+     JOIN uzman_atama src ON src.id=pick.id`,
+    [donemId, donemId, ...GEZICI_ADLAR, donemId]
   );
-  let eklenen = 0;
-  for (const row of eksik) {
-    const [[kaynak]] = await conn.query(
-      `SELECT bolum_id, grup_adi, pay_orani FROM uzman_atama
-       WHERE donem_id=? AND uzman_id=? ORDER BY id LIMIT 1`,
-      [donemId, row.uzman_id]
-    );
-    if (!kaynak) continue;
-    await conn.query(
-      `INSERT INTO uzman_atama (donem_id, uzman_id, magaza_id, bolum_id, grup_adi, pay_orani)
-       VALUES (?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE pay_orani=VALUES(pay_orani)`,
-      [donemId, row.uzman_id, row.magaza_id, kaynak.bolum_id, kaynak.grup_adi || null, kaynak.pay_orani]
-    );
-    eklenen += 1;
-  }
-  return eklenen;
+  return result.affectedRows || 0;
 }
 
 async function mergeProducts(sourceProductId, targetProductId) {

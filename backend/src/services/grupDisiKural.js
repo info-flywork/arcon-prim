@@ -2,12 +2,7 @@
 // İki rakip parfüm grubu:
 //   Puig = Rabanne, Jean Paul Gaultier, Carolina Herrera
 //   HGD  = Hermes, Givenchy, Dolce
-// Tek uzmanlı mağazada kural yok — sattığına prim.
-// 2+ parfüm sorumlusu varsa:
-//   Puigci → kendi Puig'i dışında (HGD + Dior…) Grup Dışı
-//   Givenchy+Hermes+Dolce → kendi üçlüsü dışında (Puig + Dior…) Grup Dışı
-//   Tek Hermes / tek Givenchy / tek Dolce kesilmez (Dior/Puig prim)
-// Parfüm Tüm / Sensai / LP bu kesime girmez.
+// Karşılıklı kesim yok: uzman kendi senaryosuyla karşı grubun parfümünü de primler.
 // Narciso / Issey / Zadig DFB — Prime Dahil Değil.
 // =====================================================================
 const { normalizeName } = require("../util");
@@ -186,26 +181,8 @@ function parfumUzmanAtamasi(atamalar, uzmanId, magazaId) {
   return list[0] || null;
 }
 
-/**
- * 2+ parfüm sorumlusu varsa:
- *   Puig uzmanı → kendi Puig markası değilse kesilir (HGD + Dior)
- *   Givenchy+Hermes+Dolce → kendi üçlüsü değilse kesilir (Puig + Dior)
- *   Tek Hermes / tek Givenchy / tek Dolce kesilmez
- * Tek uzmanlı yerde kesim yok.
- */
-function grupDisiSatiriMi({
-  primGrup,
-  marka,
-  aks,
-  markaGrup,
-  parfumUzmanSayisi,
-  puigUzmanSayisi,
-} = {}) {
-  const n = Number(parfumUzmanSayisi ?? puigUzmanSayisi ?? 0);
-  if (n < 2) return false;
-  if (dfbPrimHaricMi(marka)) return false;
-  if (puigUzmanGrubuMu(primGrup)) return hgdParfumMu(marka, aks, markaGrup);
-  if (hgdPuigKesilirGrubuMu(primGrup)) return puigParfumMu(marka, aks, markaGrup);
+/** Karşılıklı Puig ↔ HGD kesimi kapalı. Satır grup dışı sayılmaz. */
+function grupDisiSatiriMi() {
   return false;
 }
 

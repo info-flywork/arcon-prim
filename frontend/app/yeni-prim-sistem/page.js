@@ -1,26 +1,39 @@
 "use client";
 
-import Link from "next/link";
+import { useMemo, useState } from "react";
+import SelloutPanel from "./SelloutPanel";
+import SiralamPanel from "./SiralamPanel";
+import HedefPanel from "./HedefPanel";
 
-const BLOKLAR = [
+const SEKMELER = [
   {
-    baslik: "Bugün ne yükleniyor",
-    metin:
-      "Prim Hesaplama sayfasına giden dosyalar Arcon’un mağaza ham verisini birleştirip revize ettiği Excel’ler. Sistem tek format bekliyor: uzman-mağaza, sell-out, zeops, hedef, sıralama.",
+    id: "sellout",
+    ad: "Sell-out",
+    kisa: "Ham satış → Arcon format",
+    ikon: (
+      <path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    ),
   },
   {
-    baslik: "Ham datada ne değişiyor",
-    metin:
-      "Her mağaza kendi formatında gönderiyor; sıralama tek bir standart Excel değil. Zeops görece daha stabil; asıl kaos sıralama ve mağaza tablolarında. Ay ay kolon / satır başı kayabiliyor.",
+    id: "siralamalar",
+    ad: "Sıralamalar",
+    kisa: "Ham sıralama → Temmuz format",
+    ikon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   },
   {
-    baslik: "Hedef: format profili + normalize",
-    metin:
-      "Ham dosya → eşleme profili (hangi kolon = mağaza, uzman, marka, adet…) → kanonik tablo. Hesap motoruna dokunulmaz; çıktı bugünkü import’un yediği yapıya dönüşür. Aynı mağaza sonraki ay benzer gönderirse profil yeniden kullanılır.",
+    id: "hedefler",
+    ad: "Hedefler",
+    kisa: "Ham hedef → Arcon format",
+    ikon: (
+      <path d="M12 20V10M18 20V4M6 20v-4M3 20h18" />
+    ),
   },
 ];
 
 export default function YeniPrimSistem() {
+  const [sekme, setSekme] = useState("sellout");
+  const aktif = useMemo(() => SEKMELER.find((s) => s.id === sekme) || SEKMELER[0], [sekme]);
+
   return (
     <div className="kural-sayfa">
       <section className="kural-hero">
@@ -32,48 +45,47 @@ export default function YeniPrimSistem() {
         <div>
           <h2>Yeni Prim Sistem</h2>
           <p>
-            Ham mağaza verisi → kanonik dönüşüm çalışma alanı. Mevcut Prim Hesaplama ve hesap motoru
-            burada yok; paralel deneme alanı.
+            Ham mağaza verisi → kanonik dönüşüm. Mevcut Prim Hesaplama’ya dokunmaz; paralel deneme
+            alanı.
           </p>
         </div>
       </section>
 
-      <aside className="kural-not">
-        <strong>Bağımsız alan</strong>
-        <p>
-          Dosyaları buraya atınca format analizi yapılacak — hesap motoruna bağlı değil. Mevcut dönem
-          verisine yazılmaz;{" "}
-          <Link href="/yukle">Prim Hesaplama</Link> akışı aynen kalır.
-        </p>
-      </aside>
-
-      <div className="kural-gruplar">
-        {BLOKLAR.map((blok, i) => (
-          <article
-            className="kural-kart"
-            key={blok.baslik}
-            style={{ "--gecikme": `${i * 40}ms` }}
-          >
-            <header>
-              <div className="kural-kart-simge">{i + 1}</div>
-              <div>
-                <h3>{blok.baslik}</h3>
-              </div>
-            </header>
-            <div style={{ padding: "0 16px 16px", color: "var(--metin-2)", fontSize: 14, lineHeight: 1.55 }}>
-              {blok.metin}
-            </div>
-          </article>
-        ))}
+      <div className="yeni-prim-sekme-cubugu" role="tablist" aria-label="Çalışma sekmeleri">
+        {SEKMELER.map((s) => {
+          const secili = s.id === sekme;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={secili}
+              className={`yeni-prim-sekme ${secili ? "aktif" : ""}`}
+              onClick={() => setSekme(s.id)}
+            >
+              <span className="yeni-prim-sekme-ikon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  {s.ikon}
+                </svg>
+              </span>
+              <span className="yeni-prim-sekme-metin">
+                <strong>{s.ad}</strong>
+                <small>{s.kisa}</small>
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      <aside className="kural-not" style={{ marginTop: 16 }}>
-        <strong>Sırada</strong>
-        <p style={{ marginBottom: 0 }}>
-          Ham Excel / CSV’ler gelince kolon envanteri çıkarılacak; ilk mağazalar için eşleme profili
-          tasarlanacak. Upload ve parse bu sayfaya sonra eklenecek.
-        </p>
-      </aside>
+      <div className="yeni-prim-sekme-govde" role="tabpanel" aria-label={aktif.ad}>
+        {sekme === "sellout" ? (
+          <SelloutPanel />
+        ) : sekme === "siralamalar" ? (
+          <SiralamPanel />
+        ) : (
+          <HedefPanel />
+        )}
+      </div>
     </div>
   );
 }

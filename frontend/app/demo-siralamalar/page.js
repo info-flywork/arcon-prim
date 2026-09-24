@@ -3,8 +3,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/** Eski yol → Yeni Prim Sistem · Sell-out */
-export default function DemoPrimHesaplamaRedirect() {
+/** Eski yol → Yeni Prim Sistem · Sıralamalar */
+export default function DemoSiralamalarRedirect() {
   const router = useRouter();
   useEffect(() => {
     router.replace("/yeni-prim-sistem");

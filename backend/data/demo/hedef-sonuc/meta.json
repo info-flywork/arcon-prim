@@ -1,0 +1,2056 @@
+{
+  "kaydedildiAt": "2026-09-21T13:27:38.665Z",
+  "yearMonth": "2026-08",
+  "dosyaAdlari": [
+    "2026 Ağustos Prim Çalışma.xlsm - Ağustos Hedef.csv"
+  ],
+  "ozet": {
+    "kanonik": 565,
+    "ozetSatir": 254,
+    "atlanan": 0,
+    "yearMonth": "2026-08",
+    "bayi": {
+      "BEYMEN": 12,
+      "BOYNER": 232,
+      "SEPHORA": 237,
+      "SEVİL": 84
+    },
+    "not": "Ana çıktı = Birol sağ özet (mağaza prim × Prim Hedef + Toplam). Sheet 2: marka detay."
+  },
+  "kanallar": [
+    {
+      "kanal": "BEYMEN",
+      "satirSayisi": 12
+    },
+    {
+      "kanal": "BOYNER",
+      "satirSayisi": 232
+    },
+    {
+      "kanal": "SEPHORA",
+      "satirSayisi": 237
+    },
+    {
+      "kanal": "SEVİL",
+      "satirSayisi": 84
+    }
+  ],
+  "uyari": [],
+  "headers": [
+    "mağaza prim",
+    "Prim Hedef",
+    "Toplam Ağu.26"
+  ],
+  "ozetHeaders": [
+    "mağaza prim",
+    "Prim Hedef",
+    "Toplam Ağu.26"
+  ],
+  "satirSayisi": 254,
+  "markaSatirSayisi": 565,
+  "ozetSatirSayisi": 254,
+  "onizleme": [
+    {
+      "mağaza prim": "BEYMEN AQUA FLORYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 662250
+    },
+    {
+      "mağaza prim": "BEYMEN AQUA FLORYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 662250
+    },
+    {
+      "mağaza prim": "BEYMEN BEAUTY NİŞANTAŞI CITYS",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2638196
+    },
+    {
+      "mağaza prim": "BEYMEN BEAUTY NİŞANTAŞI CITYS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2638196
+    },
+    {
+      "mağaza prim": "BEYMEN İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 414286
+    },
+    {
+      "mağaza prim": "BEYMEN İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 414286
+    },
+    {
+      "mağaza prim": "BEYMEN TERSANE",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 3389192
+    },
+    {
+      "mağaza prim": "BEYMEN TERSANE Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 3389192
+    },
+    {
+      "mağaza prim": "BEYMEN ZORLU",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 5363656
+    },
+    {
+      "mağaza prim": "BEYMEN ZORLU Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5363656
+    },
+    {
+      "mağaza prim": "BOYNER 41 İZMİT BURDA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 374789
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1040587
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1280835
+    },
+    {
+      "mağaza prim": "BOYNER 41 İZMİT BURDA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2696211
+    },
+    {
+      "mağaza prim": "BOYNER ADANA 01 BURDA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 812809
+    },
+    {
+      "mağaza prim": "BOYNER ADANA 01 BURDA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 812809
+    },
+    {
+      "mağaza prim": "BOYNER AKASYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 467520
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1147138
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1290483
+    },
+    {
+      "mağaza prim": "BOYNER AKASYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2905141
+    },
+    {
+      "mağaza prim": "BOYNER AKBATI AVM ESENYURT",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1836166
+    },
+    {
+      "mağaza prim": "BOYNER AKBATI AVM ESENYURT Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1836166
+    },
+    {
+      "mağaza prim": "BOYNER ALANYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1435035
+    },
+    {
+      "mağaza prim": "BOYNER ALANYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1435035
+    },
+    {
+      "mağaza prim": "BOYNER ANKAMALL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2756699
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2627745
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 3044118
+    },
+    {
+      "mağaza prim": "BOYNER ANKAMALL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 8428562
+    },
+    {
+      "mağaza prim": "BOYNER ANTALYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 936115
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1885027
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1777477
+    },
+    {
+      "mağaza prim": "BOYNER ANTALYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4598619
+    },
+    {
+      "mağaza prim": "BOYNER BAYRAMPAŞA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2142331
+    },
+    {
+      "mağaza prim": "BOYNER BAYRAMPAŞA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2142331
+    },
+    {
+      "mağaza prim": "BOYNER CAPITOL",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1234522
+    },
+    {
+      "mağaza prim": "BOYNER CAPITOL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1234522
+    },
+    {
+      "mağaza prim": "BOYNER CEPA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2644348
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1428246
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1488719
+    },
+    {
+      "mağaza prim": "BOYNER CEPA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5561313
+    },
+    {
+      "mağaza prim": "BOYNER CEVAHİR",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1485754
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1413370
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1577550
+    },
+    {
+      "mağaza prim": "BOYNER CEVAHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4476674
+    },
+    {
+      "mağaza prim": "BOYNER DENİZLİ FORUM",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 350056
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 519625
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 749715
+    },
+    {
+      "mağaza prim": "BOYNER DENİZLİ FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1619396
+    },
+    {
+      "mağaza prim": "BOYNER DIYARBAKIR CEYLAN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 813332
+    },
+    {
+      "mağaza prim": "BOYNER DIYARBAKIR CEYLAN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 813332
+    },
+    {
+      "mağaza prim": "BOYNER EMAAR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 842267
+    },
+    {
+      "mağaza prim": "BOYNER EMAAR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 842267
+    },
+    {
+      "mağaza prim": "BOYNER ERENKÖY",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2099563
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1775357
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1516230
+    },
+    {
+      "mağaza prim": "BOYNER ERENKÖY Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5391150
+    },
+    {
+      "mağaza prim": "BOYNER ESKİŞEHİR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 970793
+    },
+    {
+      "mağaza prim": "BOYNER ESKİŞEHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 970793
+    },
+    {
+      "mağaza prim": "BOYNER FORUM DİYARBAKIR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1607622
+    },
+    {
+      "mağaza prim": "BOYNER FORUM DİYARBAKIR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1607622
+    },
+    {
+      "mağaza prim": "BOYNER HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 613132
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 796508
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 919359
+    },
+    {
+      "mağaza prim": "BOYNER HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2328999
+    },
+    {
+      "mağaza prim": "BOYNER İSKENDERUN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1252705
+    },
+    {
+      "mağaza prim": "BOYNER İSKENDERUN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1252705
+    },
+    {
+      "mağaza prim": "BOYNER İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2022311
+    },
+    {
+      "mağaza prim": "BOYNER İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2022311
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 7387683
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1637863
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1750759
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10776305
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1586458
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1365183
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1651649
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4603290
+    },
+    {
+      "mağaza prim": "BOYNER KAHRAMANMARAŞ",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1050664
+    },
+    {
+      "mağaza prim": "BOYNER KAHRAMANMARAŞ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1050664
+    },
+    {
+      "mağaza prim": "BOYNER KENTPARK ANKARA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2219589
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2477476
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2196772
+    },
+    {
+      "mağaza prim": "BOYNER KENTPARK ANKARA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6893837
+    },
+    {
+      "mağaza prim": "BOYNER KONYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1213182
+    },
+    {
+      "mağaza prim": "BOYNER KONYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1213182
+    },
+    {
+      "mağaza prim": "BOYNER MALL OF ISTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3240450
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2406754
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2192464
+    },
+    {
+      "mağaza prim": "BOYNER MALL OF ISTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7839668
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2440430
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2440430
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2245337
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2245337
+    },
+    {
+      "mağaza prim": "BOYNER MERSİN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1110839
+    },
+    {
+      "mağaza prim": "BOYNER MERSİN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1110839
+    },
+    {
+      "mağaza prim": "BOYNER METROPOL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 435348
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 912551
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 856769
+    },
+    {
+      "mağaza prim": "BOYNER METROPOL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2204668
+    },
+    {
+      "mağaza prim": "BOYNER MIDTOWN BODRUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 873741
+    },
+    {
+      "mağaza prim": "BOYNER MIDTOWN BODRUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 873741
+    },
+    {
+      "mağaza prim": "BOYNER PANORA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 7463524
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1332044
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1478012
+    },
+    {
+      "mağaza prim": "BOYNER PANORA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10273580
+    },
+    {
+      "mağaza prim": "BOYNER SAMSUN PİAZZA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 950691
+    },
+    {
+      "mağaza prim": "BOYNER SAMSUN PİAZZA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 950691
+    },
+    {
+      "mağaza prim": "BOYNER SERDİVAN ADAPAZARI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1408459
+    },
+    {
+      "mağaza prim": "BOYNER SERDİVAN ADAPAZARI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1408459
+    },
+    {
+      "mağaza prim": "BOYNER TRABZON FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1496460
+    },
+    {
+      "mağaza prim": "BOYNER TRABZON FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1496460
+    },
+    {
+      "mağaza prim": "BOYNER VADİ İSTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1150874
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 829345
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 871368
+    },
+    {
+      "mağaza prim": "BOYNER VADİ İSTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2851587
+    },
+    {
+      "mağaza prim": "SEPHORA AKASYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 5804987
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3365268
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2395191
+    },
+    {
+      "mağaza prim": "SEPHORA AKASYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 11565446
+    },
+    {
+      "mağaza prim": "SEPHORA AKMERKEZ",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1017821
+    },
+    {
+      "mağaza prim": "SEPHORA AKMERKEZ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1017821
+    },
+    {
+      "mağaza prim": "SEPHORA ANKAMALL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2718950
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2720937
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1936596
+    },
+    {
+      "mağaza prim": "SEPHORA ANKAMALL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7376483
+    },
+    {
+      "mağaza prim": "SEPHORA ANTALYA MİGROS",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3083033
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1403420
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1367405
+    },
+    {
+      "mağaza prim": "SEPHORA ANTALYA MİGROS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5853858
+    },
+    {
+      "mağaza prim": "SEPHORA AQUA FLORYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2643323
+    },
+    {
+      "mağaza prim": "SEPHORA AQUA FLORYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2643323
+    },
+    {
+      "mağaza prim": "SEPHORA ARMADA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1298025
+    },
+    {
+      "mağaza prim": "SEPHORA ARMADA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1298025
+    },
+    {
+      "mağaza prim": "SEPHORA BAĞDAT CADDESİ",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 6665772
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3193245
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2272755
+    },
+    {
+      "mağaza prim": "SEPHORA BAĞDAT CADDESİ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 12131772
+    },
+    {
+      "mağaza prim": "SEPHORA BU YAKA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1499131
+    },
+    {
+      "mağaza prim": "SEPHORA BU YAKA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1499131
+    },
+    {
+      "mağaza prim": "SEPHORA CAPACITY",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2361131
+    },
+    {
+      "mağaza prim": "SEPHORA CAPACITY Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2361131
+    },
+    {
+      "mağaza prim": "SEPHORA CEPA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2778709
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1067670
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1040270
+    },
+    {
+      "mağaza prim": "SEPHORA CEPA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4886649
+    },
+    {
+      "mağaza prim": "SEPHORA CEVAHİR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2004210
+    },
+    {
+      "mağaza prim": "SEPHORA CEVAHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2004210
+    },
+    {
+      "mağaza prim": "SEPHORA CITYS KOZYATAGI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1347229
+    },
+    {
+      "mağaza prim": "SEPHORA CITYS KOZYATAGI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1347229
+    },
+    {
+      "mağaza prim": "SEPHORA DEMİRÖREN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 4919317
+    },
+    {
+      "mağaza prim": "SEPHORA DEMİRÖREN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4919317
+    },
+    {
+      "mağaza prim": "SEPHORA EMAAR",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2491552
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2022069
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1439185
+    },
+    {
+      "mağaza prim": "SEPHORA EMAAR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5952806
+    },
+    {
+      "mağaza prim": "SEPHORA FORUM BORNOVA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2994976
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1531805
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1492494
+    },
+    {
+      "mağaza prim": "SEPHORA FORUM BORNOVA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6019275
+    },
+    {
+      "mağaza prim": "SEPHORA GORDION",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1489240
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 541129
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 699168
+    },
+    {
+      "mağaza prim": "SEPHORA GORDION Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2729537
+    },
+    {
+      "mağaza prim": "SEPHORA İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 5751878
+    },
+    {
+      "mağaza prim": "SEPHORA İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5751878
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3357354
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1540421
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1500888
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6398663
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 4238890
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3483183
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2479116
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10201189
+    },
+    {
+      "mağaza prim": "SEPHORA KANYON",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1312474
+    },
+    {
+      "mağaza prim": "SEPHORA KANYON Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1312474
+    },
+    {
+      "mağaza prim": "SEPHORA KORUPARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2124123
+    },
+    {
+      "mağaza prim": "SEPHORA KORUPARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2124123
+    },
+    {
+      "mağaza prim": "SEPHORA LAND OF LEGENDS",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1645174
+    },
+    {
+      "mağaza prim": "SEPHORA LAND OF LEGENDS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1645174
+    },
+    {
+      "mağaza prim": "SEPHORA M1 ADANA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2432011
+    },
+    {
+      "mağaza prim": "SEPHORA M1 ADANA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2432011
+    },
+    {
+      "mağaza prim": "SEPHORA MALL OF İSTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 5859290
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3154419
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2245122
+    },
+    {
+      "mağaza prim": "SEPHORA MALL OF İSTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 11258831
+    },
+    {
+      "mağaza prim": "SEPHORA MALTEPE PİAZZA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1749184
+    },
+    {
+      "mağaza prim": "SEPHORA MALTEPE PİAZZA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1749184
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2046369
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2046369
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1747392
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1747392
+    },
+    {
+      "mağaza prim": "SEPHORA MERSİN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2682184
+    },
+    {
+      "mağaza prim": "SEPHORA MERSİN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2682184
+    },
+    {
+      "mağaza prim": "SEPHORA NİŞANTAŞI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 4191102
+    },
+    {
+      "mağaza prim": "SEPHORA NİŞANTAŞI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4191102
+    },
+    {
+      "mağaza prim": "SEPHORA PALLADIUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1722804
+    },
+    {
+      "mağaza prim": "SEPHORA PALLADIUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1722804
+    },
+    {
+      "mağaza prim": "SEPHORA PANORA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3141917
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2326667
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1655980
+    },
+    {
+      "mağaza prim": "SEPHORA PANORA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7124564
+    }
+  ],
+  "ozetOnizleme": [
+    {
+      "mağaza prim": "BEYMEN AQUA FLORYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 662250
+    },
+    {
+      "mağaza prim": "BEYMEN AQUA FLORYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 662250
+    },
+    {
+      "mağaza prim": "BEYMEN BEAUTY NİŞANTAŞI CITYS",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2638196
+    },
+    {
+      "mağaza prim": "BEYMEN BEAUTY NİŞANTAŞI CITYS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2638196
+    },
+    {
+      "mağaza prim": "BEYMEN İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 414286
+    },
+    {
+      "mağaza prim": "BEYMEN İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 414286
+    },
+    {
+      "mağaza prim": "BEYMEN TERSANE",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 3389192
+    },
+    {
+      "mağaza prim": "BEYMEN TERSANE Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 3389192
+    },
+    {
+      "mağaza prim": "BEYMEN ZORLU",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 5363656
+    },
+    {
+      "mağaza prim": "BEYMEN ZORLU Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5363656
+    },
+    {
+      "mağaza prim": "BOYNER 41 İZMİT BURDA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 374789
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1040587
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1280835
+    },
+    {
+      "mağaza prim": "BOYNER 41 İZMİT BURDA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2696211
+    },
+    {
+      "mağaza prim": "BOYNER ADANA 01 BURDA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 812809
+    },
+    {
+      "mağaza prim": "BOYNER ADANA 01 BURDA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 812809
+    },
+    {
+      "mağaza prim": "BOYNER AKASYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 467520
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1147138
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1290483
+    },
+    {
+      "mağaza prim": "BOYNER AKASYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2905141
+    },
+    {
+      "mağaza prim": "BOYNER AKBATI AVM ESENYURT",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1836166
+    },
+    {
+      "mağaza prim": "BOYNER AKBATI AVM ESENYURT Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1836166
+    },
+    {
+      "mağaza prim": "BOYNER ALANYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1435035
+    },
+    {
+      "mağaza prim": "BOYNER ALANYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1435035
+    },
+    {
+      "mağaza prim": "BOYNER ANKAMALL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2756699
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2627745
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 3044118
+    },
+    {
+      "mağaza prim": "BOYNER ANKAMALL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 8428562
+    },
+    {
+      "mağaza prim": "BOYNER ANTALYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 936115
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1885027
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1777477
+    },
+    {
+      "mağaza prim": "BOYNER ANTALYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4598619
+    },
+    {
+      "mağaza prim": "BOYNER BAYRAMPAŞA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2142331
+    },
+    {
+      "mağaza prim": "BOYNER BAYRAMPAŞA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2142331
+    },
+    {
+      "mağaza prim": "BOYNER CAPITOL",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1234522
+    },
+    {
+      "mağaza prim": "BOYNER CAPITOL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1234522
+    },
+    {
+      "mağaza prim": "BOYNER CEPA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2644348
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1428246
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1488719
+    },
+    {
+      "mağaza prim": "BOYNER CEPA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5561313
+    },
+    {
+      "mağaza prim": "BOYNER CEVAHİR",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1485754
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1413370
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1577550
+    },
+    {
+      "mağaza prim": "BOYNER CEVAHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4476674
+    },
+    {
+      "mağaza prim": "BOYNER DENİZLİ FORUM",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 350056
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 519625
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 749715
+    },
+    {
+      "mağaza prim": "BOYNER DENİZLİ FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1619396
+    },
+    {
+      "mağaza prim": "BOYNER DIYARBAKIR CEYLAN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 813332
+    },
+    {
+      "mağaza prim": "BOYNER DIYARBAKIR CEYLAN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 813332
+    },
+    {
+      "mağaza prim": "BOYNER EMAAR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 842267
+    },
+    {
+      "mağaza prim": "BOYNER EMAAR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 842267
+    },
+    {
+      "mağaza prim": "BOYNER ERENKÖY",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2099563
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1775357
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1516230
+    },
+    {
+      "mağaza prim": "BOYNER ERENKÖY Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5391150
+    },
+    {
+      "mağaza prim": "BOYNER ESKİŞEHİR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 970793
+    },
+    {
+      "mağaza prim": "BOYNER ESKİŞEHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 970793
+    },
+    {
+      "mağaza prim": "BOYNER FORUM DİYARBAKIR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1607622
+    },
+    {
+      "mağaza prim": "BOYNER FORUM DİYARBAKIR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1607622
+    },
+    {
+      "mağaza prim": "BOYNER HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 613132
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 796508
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 919359
+    },
+    {
+      "mağaza prim": "BOYNER HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2328999
+    },
+    {
+      "mağaza prim": "BOYNER İSKENDERUN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1252705
+    },
+    {
+      "mağaza prim": "BOYNER İSKENDERUN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1252705
+    },
+    {
+      "mağaza prim": "BOYNER İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2022311
+    },
+    {
+      "mağaza prim": "BOYNER İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2022311
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 7387683
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1637863
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1750759
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10776305
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1586458
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1365183
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1651649
+    },
+    {
+      "mağaza prim": "BOYNER İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4603290
+    },
+    {
+      "mağaza prim": "BOYNER KAHRAMANMARAŞ",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1050664
+    },
+    {
+      "mağaza prim": "BOYNER KAHRAMANMARAŞ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1050664
+    },
+    {
+      "mağaza prim": "BOYNER KENTPARK ANKARA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2219589
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2477476
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2196772
+    },
+    {
+      "mağaza prim": "BOYNER KENTPARK ANKARA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6893837
+    },
+    {
+      "mağaza prim": "BOYNER KONYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1213182
+    },
+    {
+      "mağaza prim": "BOYNER KONYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1213182
+    },
+    {
+      "mağaza prim": "BOYNER MALL OF ISTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3240450
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2406754
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2192464
+    },
+    {
+      "mağaza prim": "BOYNER MALL OF ISTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7839668
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2440430
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2440430
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2245337
+    },
+    {
+      "mağaza prim": "BOYNER MARMARA PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2245337
+    },
+    {
+      "mağaza prim": "BOYNER MERSİN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1110839
+    },
+    {
+      "mağaza prim": "BOYNER MERSİN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1110839
+    },
+    {
+      "mağaza prim": "BOYNER METROPOL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 435348
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 912551
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 856769
+    },
+    {
+      "mağaza prim": "BOYNER METROPOL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2204668
+    },
+    {
+      "mağaza prim": "BOYNER MIDTOWN BODRUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 873741
+    },
+    {
+      "mağaza prim": "BOYNER MIDTOWN BODRUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 873741
+    },
+    {
+      "mağaza prim": "BOYNER PANORA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 7463524
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1332044
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1478012
+    },
+    {
+      "mağaza prim": "BOYNER PANORA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10273580
+    },
+    {
+      "mağaza prim": "BOYNER SAMSUN PİAZZA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 950691
+    },
+    {
+      "mağaza prim": "BOYNER SAMSUN PİAZZA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 950691
+    },
+    {
+      "mağaza prim": "BOYNER SERDİVAN ADAPAZARI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1408459
+    },
+    {
+      "mağaza prim": "BOYNER SERDİVAN ADAPAZARI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1408459
+    },
+    {
+      "mağaza prim": "BOYNER TRABZON FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1496460
+    },
+    {
+      "mağaza prim": "BOYNER TRABZON FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1496460
+    },
+    {
+      "mağaza prim": "BOYNER VADİ İSTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1150874
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 829345
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 871368
+    },
+    {
+      "mağaza prim": "BOYNER VADİ İSTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2851587
+    },
+    {
+      "mağaza prim": "SEPHORA AKASYA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 5804987
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3365268
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2395191
+    },
+    {
+      "mağaza prim": "SEPHORA AKASYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 11565446
+    },
+    {
+      "mağaza prim": "SEPHORA AKMERKEZ",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1017821
+    },
+    {
+      "mağaza prim": "SEPHORA AKMERKEZ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1017821
+    },
+    {
+      "mağaza prim": "SEPHORA ANKAMALL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2718950
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2720937
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1936596
+    },
+    {
+      "mağaza prim": "SEPHORA ANKAMALL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7376483
+    },
+    {
+      "mağaza prim": "SEPHORA ANTALYA MİGROS",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3083033
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1403420
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1367405
+    },
+    {
+      "mağaza prim": "SEPHORA ANTALYA MİGROS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5853858
+    },
+    {
+      "mağaza prim": "SEPHORA AQUA FLORYA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2643323
+    },
+    {
+      "mağaza prim": "SEPHORA AQUA FLORYA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2643323
+    },
+    {
+      "mağaza prim": "SEPHORA ARMADA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1298025
+    },
+    {
+      "mağaza prim": "SEPHORA ARMADA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1298025
+    },
+    {
+      "mağaza prim": "SEPHORA BAĞDAT CADDESİ",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 6665772
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3193245
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2272755
+    },
+    {
+      "mağaza prim": "SEPHORA BAĞDAT CADDESİ Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 12131772
+    },
+    {
+      "mağaza prim": "SEPHORA BU YAKA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1499131
+    },
+    {
+      "mağaza prim": "SEPHORA BU YAKA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1499131
+    },
+    {
+      "mağaza prim": "SEPHORA CAPACITY",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2361131
+    },
+    {
+      "mağaza prim": "SEPHORA CAPACITY Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2361131
+    },
+    {
+      "mağaza prim": "SEPHORA CEPA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2778709
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1067670
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1040270
+    },
+    {
+      "mağaza prim": "SEPHORA CEPA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4886649
+    },
+    {
+      "mağaza prim": "SEPHORA CEVAHİR",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2004210
+    },
+    {
+      "mağaza prim": "SEPHORA CEVAHİR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2004210
+    },
+    {
+      "mağaza prim": "SEPHORA CITYS KOZYATAGI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1347229
+    },
+    {
+      "mağaza prim": "SEPHORA CITYS KOZYATAGI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1347229
+    },
+    {
+      "mağaza prim": "SEPHORA DEMİRÖREN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 4919317
+    },
+    {
+      "mağaza prim": "SEPHORA DEMİRÖREN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4919317
+    },
+    {
+      "mağaza prim": "SEPHORA EMAAR",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2491552
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2022069
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1439185
+    },
+    {
+      "mağaza prim": "SEPHORA EMAAR Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5952806
+    },
+    {
+      "mağaza prim": "SEPHORA FORUM BORNOVA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 2994976
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1531805
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1492494
+    },
+    {
+      "mağaza prim": "SEPHORA FORUM BORNOVA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6019275
+    },
+    {
+      "mağaza prim": "SEPHORA GORDION",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 1489240
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 541129
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 699168
+    },
+    {
+      "mağaza prim": "SEPHORA GORDION Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2729537
+    },
+    {
+      "mağaza prim": "SEPHORA İSTİNYE PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 5751878
+    },
+    {
+      "mağaza prim": "SEPHORA İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 5751878
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR HİLLTOWN",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3357354
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 1540421
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1500888
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR HİLLTOWN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 6398663
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR İSTİNYE PARK",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 4238890
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3483183
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2479116
+    },
+    {
+      "mağaza prim": "SEPHORA İZMİR İSTİNYE PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 10201189
+    },
+    {
+      "mağaza prim": "SEPHORA KANYON",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1312474
+    },
+    {
+      "mağaza prim": "SEPHORA KANYON Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1312474
+    },
+    {
+      "mağaza prim": "SEPHORA KORUPARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2124123
+    },
+    {
+      "mağaza prim": "SEPHORA KORUPARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2124123
+    },
+    {
+      "mağaza prim": "SEPHORA LAND OF LEGENDS",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1645174
+    },
+    {
+      "mağaza prim": "SEPHORA LAND OF LEGENDS Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1645174
+    },
+    {
+      "mağaza prim": "SEPHORA M1 ADANA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2432011
+    },
+    {
+      "mağaza prim": "SEPHORA M1 ADANA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2432011
+    },
+    {
+      "mağaza prim": "SEPHORA MALL OF İSTANBUL",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 5859290
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 3154419
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 2245122
+    },
+    {
+      "mağaza prim": "SEPHORA MALL OF İSTANBUL Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 11258831
+    },
+    {
+      "mağaza prim": "SEPHORA MALTEPE PİAZZA",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1749184
+    },
+    {
+      "mağaza prim": "SEPHORA MALTEPE PİAZZA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1749184
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA FORUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2046369
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA FORUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2046369
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA PARK",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1747392
+    },
+    {
+      "mağaza prim": "SEPHORA MARMARA PARK Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1747392
+    },
+    {
+      "mağaza prim": "SEPHORA MERSİN",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 2682184
+    },
+    {
+      "mağaza prim": "SEPHORA MERSİN Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 2682184
+    },
+    {
+      "mağaza prim": "SEPHORA NİŞANTAŞI",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 4191102
+    },
+    {
+      "mağaza prim": "SEPHORA NİŞANTAŞI Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 4191102
+    },
+    {
+      "mağaza prim": "SEPHORA PALLADIUM",
+      "Prim Hedef": "Parfüm Tüm Markalar",
+      "Toplam Ağu.26": 1722804
+    },
+    {
+      "mağaza prim": "SEPHORA PALLADIUM Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 1722804
+    },
+    {
+      "mağaza prim": "SEPHORA PANORA",
+      "Prim Hedef": "Dior",
+      "Toplam Ağu.26": 3141917
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Givenchy+Hermes+Dolce",
+      "Toplam Ağu.26": 2326667
+    },
+    {
+      "mağaza prim": "",
+      "Prim Hedef": "Puig",
+      "Toplam Ağu.26": 1655980
+    },
+    {
+      "mağaza prim": "SEPHORA PANORA Toplam",
+      "Prim Hedef": "",
+      "Toplam Ağu.26": 7124564
+    }
+  ]
+}

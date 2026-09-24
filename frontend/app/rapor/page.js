@@ -102,7 +102,7 @@ function satirStili(tip) {
 function raporSatirRengi(metin, satisTuru) {
   const m = String(metin || "").toLocaleLowerCase("tr-TR");
   const t = String(satisTuru || "").toLocaleLowerCase("tr-TR");
-  if (t.includes("grup dışı") || m.includes("atama yok")) return { background: "#FCE4D6" };
+  if (t.includes("grup dışı") || t.includes("dfb") || m.includes("atama yok")) return { background: "#FCE4D6" };
   if (m.includes("mükerrer")) return { background: "#FCE4D6" };
   if (m.includes("eşleş") || m.includes("sell-out") || m.includes("hesap satırı yok") || t.includes("hesaplama dışı")) {
     return { background: "#FFF2CC" };

@@ -106,6 +106,7 @@ export default function PrimHesaplama() {
   const [seciliYeniYil, setSeciliYeniYil] = useState(null);
   const [temizleniyor, setTemizleniyor] = useState(false);
   const [temizleOnay, setTemizleOnay] = useState(false);
+  const [kuralKaydediliyor, setKuralKaydediliyor] = useState(false);
 
   async function donemVerisi(donemId) {
     const [logCevap, dashboardCevap] = await Promise.all([
@@ -498,6 +499,62 @@ export default function PrimHesaplama() {
     }
   }
 
+  async function dfbPrimDisiKaydet(acik) {
+    if (!acikId || kuralKaydediliyor || hesaplaniyor) return;
+    setKuralKaydediliyor(true);
+    try {
+      const cevap = await fetch(`/api/donem/${acikId}/dfb-prim-disi`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dfb_prim_disi: acik ? 1 : 0 }),
+      });
+      const veri = await cevap.json().catch(() => ({}));
+      if (!cevap.ok) throw new Error(veri.hata || "DFB ayarı kaydedilemedi");
+      setDonemler((liste) =>
+        liste.map((item) => (Number(item.id) === Number(acikId) ? { ...item, ...veri } : item))
+      );
+      setMesaj({
+        tip: "ok",
+        metin: acik
+          ? "DFB prim dışı açık. Narciso, Issey ve Zadig satırları DFB GRUP PRİM DIŞI. Para için yeniden hesapla."
+          : "DFB prim dışı kapalı. Bu markalar da prim alır. Yeniden hesapla ile yazılır.",
+      });
+    } catch (hata) {
+      setMesaj({ tip: "hata", metin: hata.message });
+    } finally {
+      setKuralKaydediliyor(false);
+    }
+  }
+
+  async function kuralSetiKaydet(seti) {
+    if (!acikId || kuralKaydediliyor || hesaplaniyor) return;
+    setKuralKaydediliyor(true);
+    try {
+      const cevap = await fetch(`/api/donem/${acikId}/kural-seti`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kural_seti: seti }),
+      });
+      const veri = await cevap.json().catch(() => ({}));
+      if (!cevap.ok) throw new Error(veri.hata || "Kural kaydedilemedi");
+      setDonemler((liste) =>
+        liste.map((item) => (Number(item.id) === Number(acikId) ? { ...item, ...veri } : item))
+      );
+      setMesaj({
+        tip: "ok",
+        metin: seti === "agustos"
+          ? "Ağustos Beymen cilt kuralları açık. Yeniden hesapla ile uygulanır."
+          : seti === "eylul"
+            ? "Eylül Beymen cilt kuralları açık. Yeniden hesapla ile uygulanır."
+            : "Beymen cilt kuralları kapalı. Yeniden hesapla mevcut bölüm kurallarıyla çalışır.",
+      });
+    } catch (hata) {
+      setMesaj({ tip: "hata", metin: hata.message });
+    } finally {
+      setKuralKaydediliyor(false);
+    }
+  }
+
   if (sayfaYukleniyor) {
     return (
       <div className="prim-yukleniyor">
@@ -603,6 +660,41 @@ export default function PrimHesaplama() {
                   {DOSYALAR.filter(dosyaHazir).length}/{DOSYALAR.length} dosya yüklü
                 </p>
               </div>
+            </div>
+            <div className="kural-toggle-satir">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={acikDonem.kural_seti === "agustos"}
+                className={`kural-toggle ${acikDonem.kural_seti === "agustos" ? "acik" : ""}`}
+                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
+                onClick={() => kuralSetiKaydet(acikDonem.kural_seti === "agustos" ? null : "agustos")}
+              >
+                <i />
+                Ağustos
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={acikDonem.kural_seti === "eylul"}
+                className={`kural-toggle ${acikDonem.kural_seti === "eylul" ? "acik" : ""}`}
+                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
+                onClick={() => kuralSetiKaydet(acikDonem.kural_seti === "eylul" ? null : "eylul")}
+              >
+                <i />
+                Eylül
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1}
+                className={`kural-toggle ${(acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1) ? "acik" : ""}`}
+                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
+                onClick={() => dfbPrimDisiKaydet(!(acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1))}
+              >
+                <i />
+                DFB prim dışı
+              </button>
             </div>
           </div>
 
