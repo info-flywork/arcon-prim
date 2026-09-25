@@ -1676,7 +1676,7 @@ app.get("/api/satis-primi/:donemId", wrap(async (req, res) => {
 //  H: Sephora Bağdat + Beymen +%0,5  = BEYMEN bayisi VEYA Sephora Bağdat → E × 0.005
 //  I: Toplam Sevil LP                 = LP grubu Sevil noktası → E × 0.005
 //  J: Toplam Toplam                   = F + G + H + I
-//  K: Mayıs Hedefler                  = uzmanın grup markalarında mağaza hedef toplamı
+//  K: {Ay} Hedefler                    = uzmanın grup markalarında mağaza hedef toplamı
 //  L: Hedef Prim %0,5                 = ciro hedefi tuttuysa E × 0.005
 //  M–P: Dior 1.lik/sıralama kuralları  = detay_json'dan (dior bölümü)
 //  Q: LP Mağaza-Cilt Bakım+diğer       = LP kuralları toplamı
@@ -1814,8 +1814,8 @@ async function primRaporuVerisi(donemId) {
     // Sephora bölümleri için baseline %1 üstü kalan fark bu kolona yansır.
     // Sensai Sephora (bölüm 22) ve Sisley Sephora Cadde (bölüm 23) kapsanır.
     let G = 0;
-    const isSensaiSephora = bayi === "SEPHORA" && grup.includes("SENSAI");
-    const isSisleySephoraCadde = bayi === "SEPHORA" && grup.includes("SISLEY") && bolumAdi.includes("CADDE");
+    const isSensaiSephora = bayi === "SEPHORA" && turkceAscii(grup).includes("SENSAI");
+    const isSisleySephoraCadde = bayi === "SEPHORA" && turkceAscii(grup).includes("SISLEY") && turkceAscii(bolumAdi).includes("CADDE");
     if (isSensaiSephora || isSisleySephoraCadde) {
       G = fark; // %2 - %1 baseline = %1 ekstra
     }
@@ -2347,32 +2347,57 @@ function adSoyadAyir(full, ad, soyad) {
   return { ad: t.slice(0, i), soyad: t.slice(i + 1) };
 }
 
+/** İ → I. Bölüm markası SENSAİ, kontrol SENSAI yazınca eşleşmiyordu. */
+function turkceAscii(s) {
+  return String(s || "")
+    .toLocaleUpperCase("tr-TR")
+    .replaceAll("İ", "I")
+    .replaceAll("Ş", "S")
+    .replaceAll("Ğ", "G")
+    .replaceAll("Ü", "U")
+    .replaceAll("Ö", "O")
+    .replaceAll("Ç", "C");
+}
+
+/** Beymen'de %0,05 yalnız bu prim gruplarındaki uzmanlara. */
+function beymenEkPrimGrubuMu(primGrup) {
+  const g = turkceAscii(primGrup).replace(/\s+/g, " ").trim();
+  if (g === "HERMES" || g === "LA PRAIRIE" || g === "DIOR" || g === "SISLEY" || g === "SENSAI") return true;
+  if (g === "PARFUM TUM MARKALAR") return true;
+  const compact = g.replace(/[^A-Z0-9&]/g, "");
+  return compact === "DOLCE&GABBANA" || compact === "DOLCEGABBANA";
+}
+
 /** Satır bazlı satış primi kolonları (Excel Prim Çalışma AE–AN). */
 function satirSatisPrimleri(primeEsas, meta) {
   const E = Number(primeEsas || 0);
   const bayi = String(meta.bayi || "").toLocaleUpperCase("tr-TR").trim();
   const magaza = String(meta.magaza || "").toLocaleUpperCase("tr-TR").trim();
-  const grup = String(meta.grup || "").toLocaleUpperCase("tr-TR").trim();
   const altKanal = String(meta.altKanal || "").toLocaleUpperCase("tr-TR").trim();
-  const bolumAdi = String(meta.bolumAdi || "").toLocaleUpperCase("tr-TR").trim();
 
   const marka = meta.marka || "";
   const kuralSeti = meta.kuralSeti || "";
   let prim1 = +(E * 0.01).toFixed(2);
   if (kuralSeti === "agustos" && !agustosBeymenNicheCiroPrimVar(magaza, marka)) prim1 = 0;
+  // Birol: bütün Sephora mağazalarında SENSAI markası → Prim %1 bir kez daha.
+  // Sisley bu kolona yazılmaz. SENSAİ (İ) de SENSAI sayılır.
   let sensai = 0;
-  const isSensaiSephora = bayi === "SEPHORA" && grup.includes("SENSAI");
-  const isSisleyCadde = bayi === "SEPHORA" && grup.includes("SISLEY") && bolumAdi.includes("CADDE");
-  if (isSensaiSephora || isSisleyCadde) sensai = prim1;
+  if (bayi === "SEPHORA" && turkceAscii(marka).includes("SENSAI")) sensai = prim1;
 
+  // Sephora Bağdat: yalnız Sisley markası. Beymen: yalnız izinli prim grupları.
   let bagdatBeymen = 0;
   const isBagdat = magaza.includes("BAĞDAT") || magaza.includes("BAGDAT");
-  if (bayi === "BEYMEN" || isBagdat) bagdatBeymen = +(E * 0.005).toFixed(2);
+  const bagdatSisley = isBagdat && turkceAscii(marka).includes("SISLEY");
+  const beymenGrup = bayi === "BEYMEN" && beymenEkPrimGrubuMu(meta.primGrup);
+  if (bagdatSisley || beymenGrup) bagdatBeymen = +(E * 0.005).toFixed(2);
 
+  // Sevil LP +%0,05: ürün markası La Prairie veya Dolce & Gabbana.
+  // Bölüm adında "LP" aramak "La Prairie" yazan grupları 0 bırakıyordu.
   let sevilLp = 0;
-  if ((altKanal === "SEVIL" || bayi === "SEVIL") && grup.includes("LP")) {
-    sevilLp = +(E * 0.005).toFixed(2);
-  }
+  const sevil = turkceAscii(altKanal) === "SEVIL" || turkceAscii(bayi) === "SEVIL";
+  const markaAscii = turkceAscii(marka);
+  const sevilLpMarka = markaAscii.includes("PRAIRIE") || markaAscii.includes("DOLCE") || markaAscii.includes("GABBANA");
+  if (sevil && sevilLpMarka) sevilLp = +(E * 0.005).toFixed(2);
 
   return {
     prim_yuzde_1: prim1,
@@ -2432,6 +2457,7 @@ function primSatirlariBirlesir(satirlar) {
       bayi: t.bayi,
       magaza: t.sellout_magaza || t.magaza_ham,
       grup: t.bolum_markalar || t.prim_grup,
+      primGrup: t.prim_grup,
       altKanal: t.alt_kanal,
       bolumAdi: t.bolum_adi,
       marka: t.marka,
@@ -2743,6 +2769,7 @@ function primSatirMap(r) {
     bayi: r.bayi,
     magaza: r.sellout_magaza || r.magaza_ham,
     grup: bolumMarkalar || r.prim_grup,
+    primGrup: r.prim_grup,
     altKanal: r.alt_kanal,
     bolumAdi: r.bolum_adi,
     marka,
@@ -2811,6 +2838,7 @@ function satisPrimiKolonlariniYenile(s) {
     bayi: s.bayi,
     magaza: s.sellout_magaza || s.magaza_ham,
     grup: s.bolum_markalar || s.prim_grup,
+    primGrup: s.prim_grup,
     altKanal: s.alt_kanal,
     bolumAdi: s.bolum_adi,
     marka: s.marka,
@@ -3279,6 +3307,8 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
   const ExcelJS = require("exceljs");
   const donemId = req.params.donemId;
   const veri = await primRaporuVerisi(donemId);
+  const [[donemAy]] = await pool.query("SELECT ay FROM donem WHERE id=?", [donemId]);
+  const hedefAy = DONEM_AYLAR[Number(donemAy?.ay)] || "";
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Prim Çalışma");
@@ -3301,7 +3331,7 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
     { key: "H", ad: "Sephora Bağdat + Beymen + % 0,05", g: 20, sayi: true, renk: "satis" },
     { key: "I", ad: "Toplam Sevil LP", g: 16, sayi: true, renk: "satis" },
     { key: "J", ad: "Toplam Toplam", g: 16, sayi: true, renk: "satis" },
-    { key: "K", ad: "Mayıs\nHedefler", g: 16, sayi: true, renk: "hedef" },
+    { key: "K", ad: hedefAy ? `${hedefAy}\nHedefler` : "Hedefler", g: 16, sayi: true, renk: "hedef" },
     { key: "L", ad: "Hedef\nPrim ( % 0,50 )", g: 16, sayi: true, renk: "hedef" },
     { key: "M", ad: "Dior Mağaza\n1.Lik  % 0,50", g: 16, sayi: true, renk: "dior" },
     { key: "N", ad: "Dior Makyaj\n1. lik % 0,33", g: 16, sayi: true, renk: "dior" },
