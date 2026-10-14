@@ -22,7 +22,6 @@ const GRUPLAR = [
       { href: "/yukle", ad: "Prim Hesaplama", ikon: "yukle", ana: true },
       { href: "/kurallar", ad: "Prim Kuralları", ikon: "kural" },
       { href: "/yeni-prim-sistem", ad: "Yeni Prim Sistem", ikon: "yeni" },
-      { href: "/demo-magaza-eslestirme", ad: "Mağaza Eşleştirme", ikon: "siralam" },
     ],
   },
   // Video için geçici gizli — "geri aç" deyince yorumdan çıkar
