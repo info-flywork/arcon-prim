@@ -704,61 +704,122 @@ async function insertSelloutBatch(conn, batch) {
 }
 
 // ---- 3. Hedef --------------------------------------------------------------
+// Hedef kaynağı aylık "Ciro Hedefleri" dosyası. Kolon adları aydan aya değişir
+// (grup kolonu "Prim Hedef" / "MARKA"; tutar kolonu "Toplam Ağu.26" / "Temmuz
+// Hedef" ...). Bu yüzden kolonları ADA göre değil DEĞERE göre tespit ederiz.
+// Hedef, uzmanın (Sell-Out Mağaza × Prim Grup) ikilisine göre toplanır (ÇOKETOPLA).
+//
+// Geçerli hedef grupları yalnız bu 4 geniş grup. Tek marka grupları (Sisley,
+// Sensai, La Prairie, Givenchy, Hermes, Puig Niche, Dolce&Gabbana...) hedef
+// ALMAZ. İleride yeni bir hedefli koalisyon eklenirse listeye buradan eklenir.
+const HEDEF_GRUPLARI = [
+  "PARFUM TUM MARKALAR", "DIOR", "GIVENCHY+HERMES+DOLCE", "PUIG",
+];
+
+function normGrupKey(s) {
+  return normalizeName(s).replace(/\s*\+\s*/g, "+");
+}
+
+// Değerleri hedef grupları kümesiyle en çok örtüşen kolon = "Prim Grup" kolonu.
+function hedefGrupKolonuBul(rows) {
+  if (!rows.length) return null;
+  const kume = new Set(HEDEF_GRUPLARI);
+  let best = null;
+  for (const k of Object.keys(rows[0])) {
+    let dolu = 0, hit = 0;
+    for (const r of rows) {
+      const v = String(r[k] ?? "").trim();
+      if (!v) continue;
+      dolu++;
+      if (kume.has(normGrupKey(v))) hit++;
+    }
+    if (dolu < 5) continue;
+    const oran = hit / dolu;
+    if (oran >= 0.5 && (!best || oran > best.oran)) best = { key: k, oran };
+  }
+  return best ? best.key : null;
+}
+
+// Grup kolonundan SONRAKİ ilk sayısal kolon = hedef tutar kolonu (sol blok).
+function hedefTutarKolonuBul(rows, grupKey) {
+  const keys = Object.keys(rows[0]);
+  const gi = keys.indexOf(grupKey);
+  for (let i = gi + 1; i < keys.length; i++) {
+    const k = keys[i];
+    let dolu = 0, sayisal = 0;
+    for (const r of rows) {
+      const raw = r[k];
+      if (raw === "" || raw == null) continue;
+      dolu++;
+      if (parseTrNumber(raw) > 0) sayisal++;
+    }
+    if (dolu >= 5 && sayisal / dolu >= 0.5) return k;
+  }
+  return null;
+}
+
 async function importHedef(buffer, donemId, dosyaAdi) {
   const rows = readSheet(
     buffer,
-    ["BAYİ", "MAĞAZA KOD", "MAĞAZA ADI", "MARKA"],
+    ["MAĞAZA ADI", "mağaza prim", "MARKA"],
     ["Mayıs Hedef", "Hedef"]
   );
   const formatHata = formatKontrol(rows, "hedef");
   if (formatHata) return formatHata;
+
+  const grupKey = hedefGrupKolonuBul(rows);
+  const tutarKey = grupKey ? hedefTutarKolonuBul(rows, grupKey) : null;
+  if (!grupKey || !tutarKey) {
+    return {
+      hata:
+        "Hedef dosyasında Prim Grup kolonu veya tutar kolonu tespit edilemedi. " +
+        "Grup kolonu Parfüm Tüm Markalar / Dior / Givenchy+Hermes+Dolce / Puig " +
+        "değerlerini, tutar kolonu sayısal hedefleri içermeli. Veri kaydedilmedi.",
+    };
+  }
+
+  const gecerliGruplar = new Set(HEDEF_GRUPLARI);
+
+  // (mağaza || grup) -> toplam tutar  (ÇOKETOPLA); kirli/tek-marka satırlar atlanır.
+  const agg = new Map();
+  for (const row of rows) {
+    const grupHam = String(row[grupKey] ?? "").trim();
+    if (!grupHam) continue;
+    const grupN = normGrupKey(grupHam);
+    if (!gecerliGruplar.has(grupN)) continue;
+    const magazaHam = pick(row, "mağaza prim", "magaza prim", "MAĞAZA ADI", "MAGAZA ADI", "Prim Mağaza");
+    if (!magazaHam) continue;
+    const tutar = parseTrNumber(row[tutarKey]);
+    if (!(tutar > 0)) continue;
+    const key = `${normalizeName(magazaHam)}||${grupN}`;
+    const cur = agg.get(key) || { magazaHam: String(magazaHam).trim(), grup: grupHam.trim(), tutar: 0 };
+    cur.tutar += tutar;
+    agg.set(key, cur);
+  }
+
   const conn = await pool.getConnection();
   let ok = 0, err = 0;
   try {
     await conn.beginTransaction();
     await conn.query("DELETE FROM hedef WHERE donem_id=?", [donemId]);
     const storeMap = await loadStoreMaps(conn);
-    for (const row of rows) {
-      const magazaHam = pick(row, "MAĞAZA ADI", "MAGAZA ADI", "Mağaza", "PRİM MAĞAZA");
-      const marka = pick(row, "MARKA", "Marka");
-      // Hedef kolonu dosyadan dosyaya değişiyor: "REVİZE Mayıs", "Haz-26",
-      // hatta başlığı bir üst satırda kalmış isimsiz kolon (2026 Haziran
-      // dosyasındaki gibi). Sırayla dene:
-      const keys = Object.keys(row);
-      let hedefCiro = pick(row, "REVİZE  Mayıs", "REVİZE Mayıs", "REVİZE", "HEDEF", "Hedef");
-      if (hedefCiro === null || parseTrNumber(hedefCiro) <= 0) {
-        // 1) başlığında REV/HEDEF geçen dolu kolon
-        let k = keys.find((k) => /REV|HEDEF/i.test(k) && parseTrNumber(row[k]) > 0);
-        // 2) başlıksız kalmış (__EMPTY) dolu kolon — bölünmüş başlık durumu
-        if (!k) k = [...keys].reverse().find((k) => /__EMPTY/.test(k) && parseTrNumber(row[k]) > 0);
-        // 3) "Haz-26" gibi ay kodlu dolu kolon
-        if (!k) k = [...keys].reverse().find((k) => /^[A-Za-zÇĞİÖŞÜçğıöşü]{3}-\d{2}$/.test(k.trim()) && parseTrNumber(row[k]) > 0);
-        // 4) " Mayıs" gibi doğrudan ay adı olan dolu kolon
-        if (!k) {
-          const aylar = /^(OCAK|SUBAT|MART|NISAN|MAYIS|HAZIRAN|TEMMUZ|AGUSTOS|EYLUL|EKIM|KASIM|ARALIK)$/;
-          k = [...keys].reverse().find((key) => aylar.test(normalizeName(key)) && parseTrNumber(row[key]) > 0);
-        }
-        hedefCiro = k ? row[k] : null;
-      }
-      const tutar = parseTrNumber(hedefCiro);
-      if (!magazaHam || !marka) { err++; continue; }
-      // 0/boş hedef kaydedilmez: 0 hedef "hedef tuttu" sayılıp haksız prim doğurur
-      if (tutar <= 0) { err++; continue; }
+    for (const { magazaHam, grup, tutar } of agg.values()) {
       const magazaId = resolveStoreId(storeMap, magazaHam) || null;
+      if (!magazaId) err++; // mağaza çözülemedi: hesapta ham ad ile fallback var
       await conn.query(
-        `INSERT INTO hedef (donem_id, magaza_id, magaza_ham, marka, hedef_ciro)
-         VALUES (?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE hedef_ciro=VALUES(hedef_ciro)`,
-        [donemId, magazaId, String(magazaHam).trim(), String(marka).trim().toLocaleUpperCase("tr-TR"), tutar]
+        `INSERT INTO hedef (donem_id, magaza_id, magaza_ham, marka, prim_grup, hedef_ciro)
+         VALUES (?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE hedef_ciro = hedef_ciro + VALUES(hedef_ciro)`,
+        [donemId, magazaId, magazaHam, grup.toLocaleUpperCase("tr-TR"), grup, tutar]
       );
       ok++;
     }
     await conn.query(
       "INSERT INTO import_log (donem_id, tip, dosya_adi, satir_sayisi, hatali_satir) VALUES (?,?,?,?,?)",
-      [donemId, "hedef", dosyaAdi, rows.length, err]
+      [donemId, "hedef", dosyaAdi, agg.size, err]
     );
     await conn.commit();
-    return { toplam: rows.length, eslesen: ok, eslesmeyen: err };
+    return { toplam: agg.size, eslesen: ok, eslesmeyen: err };
   } catch (e) {
     await conn.rollback();
     throw e;

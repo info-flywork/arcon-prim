@@ -49,18 +49,19 @@ const BIZIM_MARKALAR = [
   "SISLEY",
 ];
 
-/** Communite Arcon markaları (Boyner/Communite marka eşleştirme sekmesi) */
+/** Communite Arcon markaları (Birol Ağustos — RABANNE yok; SAÇ çeşidi yok) */
 const COMMUNITE_MARKALAR = new Set(
   [
     "CAROLINA HERRERA",
+    "DOLCE GABBANA",
     "DOLCE & GABBANA",
     "DOLCE&GABBANA",
     "DRIES VAN NOTEN",
+    "DRIES VAN NOTEN BEAUTY",
     "GIVENCHY",
     "HERMES",
     "JEAN PAUL GAULTIER",
     "LA PRAIRIE",
-    "RABANNE",
     "SCENTOLOGIA",
     "SENSAI",
     "SISLEY",
@@ -75,13 +76,19 @@ const TARGET_TO_CESIT = {
   HAIRCARE: "4-SAÇ BAKIM",
 };
 
+/** Birol Communite: SAÇ / EV / GÜNEŞ blokları yok — sadece bu dört çeşit */
 const COMMUNITE_BLOCKS = [
   { cesit: "0-MAĞAZA", rankCol: 0, brandCol: 1 },
   { cesit: "1-PARFÜM", rankCol: 3, brandCol: 4 },
   { cesit: "3-CİLT BAKIM", rankCol: 6, brandCol: 7 },
   { cesit: "2-MAKYAJ", rankCol: 9, brandCol: 10 },
-  { cesit: "4-SAÇ BAKIM", rankCol: 12, brandCol: 13 },
 ];
+
+/**
+ * Birol Boyner Ağustos: bu mağazalarda FRAGRANCE (1-PARFÜM) satırı yok — sadece 0-MAĞAZA.
+ * Hamda fragrance dolu olsa bile Birol kapsamına alınmıyor.
+ */
+const BOYNER_PARFUM_YOK = new Set(["BOYNER KAHRAMANMARAŞ"].map(fold));
 
 function fold(s) {
   return String(s || "")
@@ -311,6 +318,15 @@ function normalizeMarka(v) {
   return s;
 }
 
+/** Communite çıktı yazımı Birol’a göre: DOLCE GABBANA, DRIES VAN NOTEN BEAUTY */
+function normalizeMarkaCommunite(v) {
+  const s = fold(v);
+  if (!s) return "";
+  if (s.includes("DOLCE") && s.includes("GABBANA")) return "DOLCE GABBANA";
+  if (s.includes("DRIES VAN NOTEN")) return "DRIES VAN NOTEN BEAUTY";
+  return normalizeMarka(v);
+}
+
 function isBizimMarka(marka) {
   const n = normalizeMarka(marka);
   if (!n) return false;
@@ -473,9 +489,9 @@ function normalizeCommunite(matrix, opts, dosyaAdi) {
       const markaHam = row[block.brandCol];
       const siraHam = row[block.rankCol];
       if (markaHam == null || String(markaHam).trim() === "") continue;
-      const marka = normalizeMarka(markaHam);
+      const marka = normalizeMarkaCommunite(markaHam);
       const mf = fold(marka).replace(/\s*&\s*/g, "&");
-      // Communite: sadece eşleştirme tablosundaki Arcon markaları (DIOR yok)
+      // Communite: sadece eşleştirme tablosundaki Arcon markaları (DIOR / RABANNE yok)
       if (!marka || (!COMMUNITE_MARKALAR.has(fold(marka)) && !COMMUNITE_MARKALAR.has(mf))) {
         atlananMarka++;
         continue;
@@ -509,7 +525,7 @@ function normalizeCommunite(matrix, opts, dosyaAdi) {
       atlananMarka,
       magaza,
       yearMonth,
-      not: "Galataport/İstinye: TOPLAM→SAÇ; Communite marka whitelist (eşleştirme sekmesi). DIOR yok.",
+      not: "Galataport/İstinye: TOPLAM/PARFÜM/CİLT/MAKYAJ; SAÇ yok (Birol). Marka: DOLCE GABBANA / DRIES…BEAUTY.",
     },
   };
 }
@@ -630,6 +646,7 @@ function normalizeBoyner(matrix, opts) {
   const out = [];
   let atlananMarka = 0;
   let atlananMagaza = 0;
+  let atlananParfumYok = 0;
 
   // başlık satırı: ALL SECTION / FRAGRANCE / …
   let headerRow = -1;
@@ -700,6 +717,10 @@ function normalizeBoyner(matrix, opts) {
         atlananMagaza++;
         continue;
       }
+      if (b.cesit === "1-PARFÜM" && BOYNER_PARFUM_YOK.has(fold(magaza))) {
+        atlananParfumYok++;
+        continue;
+      }
       out.push(
         canonRow({
           magaza,
@@ -729,8 +750,9 @@ function normalizeBoyner(matrix, opts) {
       blok: blocks.map((b) => b.cesit),
       atlananMarka,
       atlananMagaza,
+      atlananParfumYok,
       yearMonth,
-      not: "ALL SECTION/FRAGRANCE/SKINCARE/MAKE-UP; sadece eşleşen mağazalar; #N/A ve internet atlandı.",
+      not: "ALL SECTION/FRAGRANCE/SKINCARE/MAKE-UP; Kahramanmaraş’ta PARFÜM yok (Birol); #N/A ve internet atlandı.",
     },
   };
 }

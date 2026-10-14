@@ -93,7 +93,7 @@ function manuelPrimCalismaSatirlari(donem) {
     birim_ciro: s.esas,
     prim_yuzde_1: s.prim1,
     toplam_satis_primi: s.prim1,
-    satis_turu: "Manuel",
+    satis_turu: "Grup Satış",
   }));
 }
 

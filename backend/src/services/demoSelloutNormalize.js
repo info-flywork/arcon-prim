@@ -258,6 +258,17 @@ function loadJson(name) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
+/** Stok → Arcon barkod; "DGB30209950000 THE" gibi sonekli Urun Model’i de dener. */
+function lookupBarkodByStok(barkodByStok, referans) {
+  if (!barkodByStok || !referans) return "";
+  const stokKey = String(referans).trim().toLocaleUpperCase("tr-TR");
+  if (!stokKey) return "";
+  if (barkodByStok[stokKey]) return barkodByStok[stokKey];
+  const first = stokKey.split(/\s+/)[0];
+  if (first && first !== stokKey && barkodByStok[first]) return barkodByStok[first];
+  return "";
+}
+
 /** Map değeri string veya { arcon, aktif } olabilir (Boyner sıralama formatı). */
 function resolveMagazaAd(map, ham) {
   if (!ham || !map) return "";
@@ -383,6 +394,114 @@ function isOnlineMagaza(...parts) {
   // Sephora E-STORE mağaza kodu
   if (/^2853$/.test(String(parts[0] || "").trim())) return true;
   return false;
+}
+
+/**
+ * GWP (Gift With Purchase) — hediye ürün, prim yok.
+ * Boyner hamda Product Type DESC = "Gwp" ve ürün adında "Gwp" geçer; çıktıya alınmaz.
+ */
+function isGwpText(...parts) {
+  for (const p of parts) {
+    const s = String(p || "").trim();
+    if (!s) continue;
+    if (/^\s*GWP\s*$/i.test(s)) return true;
+    if (/\bGWP\b/i.test(s)) return true;
+  }
+  return false;
+}
+
+function isGwpHamRow(row) {
+  return isGwpText(
+    pick(row, "Product Type DESC", "Product Type"),
+    pick(row, "Product Group DESC", "Product Group"),
+    pick(row, "Urun DESC", "Ürün DESC", "Ürün Adı", "Urun Adi", "Material"),
+    pick(row, "Urun SATICI MALZEME", "Ürün SATICI MALZEME")
+  );
+}
+
+/**
+ * Prim dışı yan ürün (Birol Beymen sell-out’ta yok / prim kapsamı dışı):
+ * mum, body/home set, colour stick, Byredo fırça-liq ruj, Penhaligon gift/el kremi/set, baby&kids.
+ * Not: Dior/Hermes lipstick Birol’da var — genel LIPSTICK kesilmez.
+ * Not: EV KOZMETİK tümü kesilmez — Birol L’Artisan difüzör tutuyor; mum CANDLE|MUM ile gider.
+ */
+function isPrimDisiYanUrun(...parts) {
+  const raw = parts
+    .filter((p) => p != null && String(p).trim() !== "")
+    .map((p) => String(p))
+    .join(" ");
+  if (!raw.trim()) return false;
+  const u = raw
+    .toLocaleUpperCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+  if (/\bCANDLE\b|\bMUM\b/.test(u)) return true;
+  if (/BODY\s*SET|HOME\s*&\s*AWAY/.test(u)) return true;
+  if (/COLOUR\s*STICK|COLOR\s*STICK/.test(u)) return true;
+  if (/BABY\s*&\s*KIDS/.test(u)) return true;
+  if (/PENHALIGON/.test(u) && /GIFT\s*S/.test(u)) return true;
+  if (/PENHALIGON/.test(u) && /EL KREMI/.test(u)) return true;
+  // Byredo: fırça / likit ruj (bazı klasik lipstick Birol’da var — barkod listesiyle netlenir)
+  if (/BYREDO/.test(u) && (/\bBRUSH\b|LIQ LIPSTICK/.test(u))) return true;
+  return false;
+}
+
+/**
+ * Birol Ağustos sell-out’ta hiç geçmeyen barkodlar (hamda var, prim kapsamı dışı).
+ * Penhaligon: Arcon master’da yok / Birol almamış SKU’lar.
+ * Byredo: lipstick-shade / Tulipmania lotion / Sellier extract (Birol’daki diğer lipstick/lotion tutulur).
+ * Sturm: büyük boy serum / body cream.
+ */
+const BIROL_PRIM_DISI_BARKOD = new Set([
+  // Penhaligon's
+  "793675018769",
+  "793675018790",
+  "793675340273",
+  "793675976090",
+  "793675011296",
+  "793675976304",
+  "5056245054884",
+  "793675022902",
+  "793675017854",
+  "793675976014",
+  "5056245049569",
+  "793675017793",
+  // Byredo
+  "7340032832068",
+  "7340032832112",
+  "7340032878035",
+  "7340032878103",
+  "7340032877724",
+  "7340032859454",
+  "7340032825787",
+  // Dr. Barbara Sturm
+  "8410225567561",
+  "4015165334224",
+]);
+
+/** Ham barkod → Birol/Arcon master barkod (kanal bazlı soft-key parity). */
+const BARKOD_DUZELT_BEYMEN = {
+  // Sisley Supremya eye cream: ham 1540805? → Birol 1525109 (sadece Beymen; Sephora’da 1540805 doğru)
+  "3473311540805": "3473311525109",
+};
+const BARKOD_DUZELT_COMMUNITE = {
+  // Communite yerel 8685… → üretici EAN
+  "8685136584444": "3274872511798", // Givenchy L'Interdit Elixir 80ml
+  "8685136362356": "4973167015292", // Sensai cleansing gel water
+  "8685136362387": "4973167943540", // Sensai bronze natural veil
+};
+
+function isBirolPrimDisiBarkod(barkod) {
+  const b = String(barkod || "").replace(/\D/g, "");
+  return Boolean(b && BIROL_PRIM_DISI_BARKOD.has(b));
+}
+
+function duzeltBarkod(barkod, kanal) {
+  const b = String(barkod || "").replace(/\D/g, "");
+  if (kanal === "beymen") return BARKOD_DUZELT_BEYMEN[b] || b;
+  if (kanal === "communite") return BARKOD_DUZELT_COMMUNITE[b] || b;
+  return b;
 }
 
 function matrixToObjects(matrix, headerRowIndex) {
@@ -517,12 +636,24 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
   let atlananAy = 0;
   let atlananBarkod = 0;
   let atlananOnline = 0;
+  let atlananYanUrun = 0;
+  let atlananPrimDisiBarkod = 0;
+  let barkodDuzelt = 0;
   let refDb = 0;
 
   for (const row of rows) {
     const ay = String(pick(row, "Zaman Yıl-Ay ADI", "Zaman Yil-Ay ADI") || "").trim();
     if (yearMonth && ay && ay !== yearMonth) {
       atlananAy++;
+      continue;
+    }
+    const marka = String(pick(row, "Ürün Marka ADI", "Urun Marka ADI") || "").trim();
+    const urunAdi = String(pick(row, "Ürün Varyant ADI", "Ürün Ana ADI") || "").trim();
+    const urunGrubu = String(pick(row, "Ürün MG Üst Grup ADI", "Ürün MG Detay Grup ADI") || "").trim();
+    const detayGrup = String(pick(row, "Ürün MG Detay Grup ADI") || "").trim();
+    const anaAdi = String(pick(row, "Ürün Ana ADI", "Urun Ana ADI") || "").trim();
+    if (isPrimDisiYanUrun(marka, urunAdi, anaAdi, urunGrubu, detayGrup)) {
+      atlananYanUrun++;
       continue;
     }
     const ciro = parseTrNumber(
@@ -544,11 +675,18 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
       ) || ""
     ).trim();
     // Hamda bazen '3473311540805?' gibi soru işaretli geliyor — sadece rakamlar
-    const barkod = barkodHam.replace(/\D/g, "");
+    let barkod = barkodHam.replace(/\D/g, "");
     if (!barkod || barkod.length < 8) {
       atlananBarkod++;
       continue;
     }
+    if (isBirolPrimDisiBarkod(barkod)) {
+      atlananPrimDisiBarkod++;
+      continue;
+    }
+    const barkodOnce = barkod;
+    barkod = duzeltBarkod(barkod, "beymen");
+    if (barkod !== barkodOnce) barkodDuzelt++;
     const magaza = String(pick(row, "Lokasyon ADI", "Lokasyon Adi") || "").trim();
     if (isOnlineMagaza(magaza)) {
       atlananOnline++;
@@ -564,12 +702,15 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
         adet: Math.round(adet),
         ciro: Math.round(ciro * 100) / 100,
         magaza,
-        marka: String(pick(row, "Ürün Marka ADI", "Urun Marka ADI") || "").trim(),
-        urunAdi: String(pick(row, "Ürün Varyant ADI", "Ürün Ana ADI") || "").trim(),
+        marka,
+        urunAdi,
         referans: dbRef || hamRef,
-        urunGrubu: String(pick(row, "Ürün MG Üst Grup ADI", "Ürün MG Detay Grup ADI") || "").trim(),
+        urunGrubu,
         kaynak: dosyaAdi,
-        not: "üretici barkod; üst grup→kanonik ürün grubu",
+        not:
+          barkod !== barkodOnce
+            ? `üretici barkod düzelt ${barkodOnce}→${barkod}`
+            : "üretici barkod; üst grup→kanonik ürün grubu",
       })
     );
   }
@@ -583,6 +724,9 @@ function normalizeBeymen(rows, opts, dosyaAdi) {
       atlananAy,
       atlananBarkod,
       atlananOnline,
+      atlananYanUrun,
+      atlananPrimDisiBarkod,
+      barkodDuzelt,
       arconRefDb: refDb,
       yearMonthFiltre: yearMonth || null,
     },
@@ -596,6 +740,7 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
   const refByBarkod = opts.refByBarkod || {};
   const out = [];
   let atlanan = 0;
+  let atlananEanMap = 0;
   let eanMapHit = 0;
   let refDb = 0;
   let atlananOnline = 0;
@@ -607,6 +752,12 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
     const hamEan = String(pick(row, "EAN Code", "EAN") || "").trim();
     if (!hamEan || qty == null || qty === 0 || sales == null) {
       atlanan++;
+      continue;
+    }
+    // Birol kuralı: Sephora EAN → Arcon eşleşmesi yoksa sell-out’a alma (travel/mini vb.)
+    const mapped = eanMap[hamEan];
+    if (!mapped || !(mapped.barkod || mapped.ref)) {
+      atlananEanMap++;
       continue;
     }
     const ciro = Math.round((sales / KDV_ORAN) * 100) / 100;
@@ -622,22 +773,23 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
     const matKod = String(pick(row, "Material Code") || "").trim();
 
     // Onların Format’ı: ham EAN → Arcon Barkod + Arcon Ref (stok).
-    // Map yoksa DB stok; barkod ham EAN kalır.
-    const mapped = eanMap[hamEan];
     let barkod = hamEan;
     let referans = matKod;
     let notEk = "";
-    if (mapped && (mapped.barkod || mapped.ref)) {
-      eanMapHit++;
-      if (mapped.barkod) barkod = mapped.barkod;
-      if (mapped.ref) referans = mapped.ref;
-      notEk = mapped.barkod && mapped.barkod !== hamEan ? `; EAN→Arcon ${hamEan}→${barkod}` : "; EAN map ref";
-    } else {
+    eanMapHit++;
+    if (mapped.barkod) barkod = mapped.barkod;
+    if (mapped.ref) referans = mapped.ref;
+    notEk =
+      mapped.barkod && mapped.barkod !== hamEan
+        ? `; EAN→Arcon ${hamEan}→${barkod}`
+        : "; EAN map ref";
+    // Map ref yoksa DB stok yedek
+    if (!mapped.ref) {
       const dbRef = refByBarkod[hamEan] || refByBarkod[barkod] || "";
       if (dbRef) {
         refDb++;
         referans = dbRef;
-        notEk = "; DB stok_kodu";
+        notEk += "; DB stok_kodu";
       }
     }
 
@@ -665,6 +817,7 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
       kanonik: out.length,
       atlanan,
       atlananOnline,
+      atlananEanMap,
       eanMapHit,
       refDb,
       eslesmeyenMagazaKod: [...eslesmeyen],
@@ -673,14 +826,23 @@ function normalizeSephora(rows, maps, dosyaAdi, opts = {}) {
   };
 }
 
-function normalizeBoyner(rows, maps, dosyaAdi) {
+function normalizeBoyner(rows, maps, dosyaAdi, opts = {}) {
   const boynerMap = maps.boyner || {};
+  const barkodByStok = opts.barkodByStok || {};
+  const refByBarkod = opts.refByBarkod || {};
   const out = [];
   let atlanan = 0;
   let atlananOnline = 0;
+  let atlananGwp = 0;
+  let barkodStokMap = 0;
   const eslesmeyen = new Set();
 
   for (const row of rows) {
+    // Hediye (GWP) — barkod geçersiz olsa da GWP say; prim yok
+    if (isGwpHamRow(row)) {
+      atlananGwp++;
+      continue;
+    }
     const adet = parseTrNumber(pick(row, "Pos Kasa Satış Net Miktar", "Pos Kasa Satis Net Miktar"));
     const ciro = parseTrNumber(
       pick(row, "Pos Kasa Satış Net Tutar KDV'siz", "Pos Kasa Satis Net Tutar KDVsiz")
@@ -707,20 +869,31 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
       atlananOnline++;
       continue;
     }
+    // Arcon Referans = ürün kodu (Urun Model: DGB31012500000 / HRM108409V0)
+    const referans = String(pick(row, "Urun Model", "Urun SATICI MALZEME") || "").trim();
+    // Ham ANAEAN Arcon master’da yoksa stok_kodu → Arcon barkod (DG 3423→8057 gibi)
+    let barkodFinal = barkodTemiz;
+    let notEk = "KDVsiz tutar hamda";
+    const hamBarkodDbde = Boolean(refByBarkod[barkodTemiz]);
+    const mappedBarkod = lookupBarkodByStok(barkodByStok, referans);
+    if (!hamBarkodDbde && mappedBarkod && String(mappedBarkod) !== barkodTemiz) {
+      barkodFinal = String(mappedBarkod);
+      barkodStokMap++;
+      notEk += `; stok→barkod ${barkodTemiz}→${barkodFinal}`;
+    }
     out.push(
       canonRow({
         bayi: "BOYNER",
-        barkod: barkodTemiz,
+        barkod: barkodFinal,
         adet: Math.round(adet),
         ciro: Math.round(ciro * 100) / 100,
         magaza,
         marka: String(pick(row, "Urun Marka DESC", "Ürün Marka DESC") || "").trim(),
         urunAdi: String(pick(row, "Urun DESC", "Ürün DESC") || "").trim(),
-        // Arcon Referans = ürün kodu (Urun Model: HRM108409V0). SATICI MALZEME İngilizce isim.
-        referans: String(pick(row, "Urun Model", "Urun SATICI MALZEME") || "").trim(),
+        referans,
         urunGrubu: String(pick(row, "Section DESC", "Product Group DESC") || "").trim(),
         kaynak: dosyaAdi,
-        not: "KDVsiz tutar hamda",
+        not: notEk,
       })
     );
   }
@@ -732,6 +905,8 @@ function normalizeBoyner(rows, maps, dosyaAdi) {
       kanonik: out.length,
       atlanan,
       atlananOnline,
+      atlananGwp,
+      barkodStokMap,
       eslesmeyenLokasyon: [...eslesmeyen].slice(0, 40),
     },
     uyari: [],
@@ -782,6 +957,7 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
   const out = [];
   let atlanan = 0;
   let atlananOnline = 0;
+  let barkodDuzelt = 0;
   let refDb = 0;
   const eslesmeyen = new Set();
   let marka = "";
@@ -792,12 +968,15 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
 
     const m = String(row[0] || "").trim();
     if (m) marka = m;
-    const barkod = String(row[2] || "").trim();
+    const barkodHam = String(row[2] || "").trim();
     const urunAdi = String(row[3] || "").trim();
-    if (!barkod) {
+    if (!barkodHam) {
       atlanan++;
       continue;
     }
+    const barkodOnce = barkodHam.replace(/\D/g, "") || barkodHam;
+    const barkod = duzeltBarkod(barkodOnce, "communite");
+    if (barkod !== barkodOnce) barkodDuzelt++;
 
     const dbRef = refByBarkod[barkod] || "";
     if (dbRef) refDb++;
@@ -826,7 +1005,12 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
           urunAdi,
           referans: dbRef,
           kaynak: dosyaAdi,
-          not: magMap[b.lok] ? "SAP pivot unpivot" : `SAP pivot; mağaza map yok: ${b.lok}`,
+          not:
+            barkod !== barkodOnce
+              ? `SAP pivot; barkod düzelt ${barkodOnce}→${barkod}`
+              : magMap[b.lok]
+                ? "SAP pivot unpivot"
+                : `SAP pivot; mağaza map yok: ${b.lok}`,
         })
       );
     }
@@ -840,6 +1024,7 @@ function normalizeCommunite(matrix, maps, dosyaAdi, opts = {}) {
       kanonik: out.length,
       atlanan,
       atlananOnline,
+      barkodDuzelt,
       refDb,
       lokasyonBlok: blocks.map((b) => b.lok),
       eslesmeyenLokasyon: [...eslesmeyen],
@@ -913,7 +1098,7 @@ function normalizeSelloutFiles(files, opts = {}) {
     if (kanal === "sevil") result = normalizeSevil(rows, maps, file.dosyaAdi, opts);
     else if (kanal === "beymen") result = normalizeBeymen(rows, opts, file.dosyaAdi);
     else if (kanal === "sephora") result = normalizeSephora(rows, maps, file.dosyaAdi, opts);
-    else if (kanal === "boyner") result = normalizeBoyner(rows, maps, file.dosyaAdi);
+    else if (kanal === "boyner") result = normalizeBoyner(rows, maps, file.dosyaAdi, opts);
     else {
       result = {
         kanal,
@@ -933,13 +1118,33 @@ function normalizeSelloutFiles(files, opts = {}) {
 
   // Birol Format: iade yok (adet/ciro negatif satır üretilmez)
   // canonRow alanları: Adet / Ciro Kdv Hariç
+  // GWP + prim dışı yan ürün (mum/set/colour stick…) — prim yok
   let atlananIade = 0;
+  let atlananGwp = 0;
+  let atlananYanUrun = 0;
   const tumNet = [];
   for (const r of tum) {
     const adet = Number(r.Adet ?? r.adet);
     const ciro = Number(r["Ciro Kdv Hariç"] ?? r.ciro);
     if ((Number.isFinite(adet) && adet < 0) || (Number.isFinite(ciro) && ciro < 0)) {
       atlananIade++;
+      continue;
+    }
+    if (isGwpText(r["Ürün Adı"], r.urunAdi, r["Ürün Grubu"], r.urunGrubu)) {
+      atlananGwp++;
+      continue;
+    }
+    if (
+      isPrimDisiYanUrun(
+        r.Bayi,
+        r["Arcon Marka"],
+        r["Ürün Adı"],
+        r.urunAdi,
+        r["Ürün Grubu"],
+        r.urunGrubu
+      )
+    ) {
+      atlananYanUrun++;
       continue;
     }
     tumNet.push(r);
@@ -971,6 +1176,11 @@ function normalizeSelloutFiles(files, opts = {}) {
     parcalar,
     ozet: {
       atlananIade,
+      atlananGwp:
+        atlananGwp + parcalar.reduce((s, p) => s + (Number(p.ozet?.atlananGwp) || 0), 0),
+      atlananYanUrun:
+        atlananYanUrun + parcalar.reduce((s, p) => s + (Number(p.ozet?.atlananYanUrun) || 0), 0),
+      atlananEanMap: parcalar.reduce((s, p) => s + (Number(p.ozet?.atlananEanMap) || 0), 0),
       zeopsMagaza: opts.zeopsIndex?.adet ?? null,
       atlananZeopsSatir: zeopsEleme?.satir ?? 0,
       atlananZeopsMagaza: zeopsEleme?.magazalar?.length ?? 0,

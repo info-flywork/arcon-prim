@@ -52,10 +52,11 @@ function resolveMukerrerMod(options = {}) {
  * Satır taşarsa etiket Mükerrer olur ama kalan sell-out kadar prim yazılır.
  */
 /** Prim Hesaplama özeti = rapordaki Prime Esas Toplam Tutar (mükerrer 0). */
-function ozetEsasiNetDoldur(hesapSatirlari, ozetMap) {
+function ozetEsasiNetDoldur(hesapSatirlari, ozetMap, inGroupByBeyan = new Map()) {
   for (const acc of ozetMap.values()) {
     acc.primeEsas = 0;
     acc.adet = 0;
+    acc.grupEsas = 0; // sadece grup-içi satışların esas'ı (sıralama primi tabanı)
   }
   const gruplar = new Map();
   for (const row of hesapSatirlari) {
@@ -70,7 +71,7 @@ function ozetEsasiNetDoldur(hesapSatirlari, ozetMap) {
     if (!bolumId) continue;
     const poolKey = `${uzmanId}|${magazaId}|${uniqId || urunId || row[1]}`;
     if (!gruplar.has(poolKey)) gruplar.set(poolKey, []);
-    gruplar.get(poolKey).push({ uzmanId, magazaId, bolumId, primAdet, primeEsas, aciklama });
+    gruplar.get(poolKey).push({ beyanId: row[1], uzmanId, magazaId, bolumId, primAdet, primeEsas, aciklama });
   }
   for (const grup of gruplar.values()) {
     let tasinanEsas = 0;
@@ -100,6 +101,7 @@ function ozetEsasiNetDoldur(hesapSatirlari, ozetMap) {
       if (!acc) continue;
       acc.primeEsas += s.primeEsas;
       acc.adet += s.primAdet;
+      if (inGroupByBeyan.get(s.beyanId)) acc.grupEsas += s.primeEsas;
     }
   }
 }
@@ -189,6 +191,16 @@ function genisletMarkalar(markalarJson, grupAdi) {
   const ekstra = grupAdindanMarkaAnahtarlari(grupAdi);
   if (ekstra.length) return ekstra;
   return keys;
+}
+
+function isParfumSatisGrubu(marka, markaGrup, aks) {
+  const isKeeper = (x) => {
+    const s = normalizeName(x || "");
+    return s.includes("DIOR") || s.includes("PRAIRIE") || s === "LP" || s.includes("SISLEY") || s.includes("SENSAI");
+  };
+  if (isKeeper(marka) || isKeeper(markaGrup)) return false; // kendi satış grubu, parfüm kovasına girmez
+  const a = normalizeName(aks || "");
+  return a === "" || a.includes("PARFUM");
 }
 
 function markaGrubunda(markalarJson, marka, markaGrupMap) {
@@ -284,6 +296,7 @@ async function hesapla(donemId, options = {}) {
     );
     // Excel Group > bölüm marka listesi: Givenchy+Hermes+Dolce → GIV de dahil
     for (const a of atamalar) {
+      a.hamMarkalar = a.markalar; // bölümün ham marka listesi (sıralama tabanı grup filtresi için)
       a.markalar = genisletMarkalar(a.markalar, a.grup_adi);
     }
     const [kurallar] = await conn.query(
@@ -440,11 +453,21 @@ async function hesapla(donemId, options = {}) {
     }
     const tumMarkalar = [...tumMarkalarSet];
 
-    // Hedefler: "magaza|MARKA" -> hedef ciro
+    // Hedefler: (mağaza × PRİM GRUP) -> hedef ciro. Birol'un ÇOKETOPLA mantığı:
+    // uzmanın Sell-Out Mağazası + Prim Grubu ikilisinin toplam hedefi.
     const [hedefRows] = await conn.query(
-      "SELECT magaza_id, marka, hedef_ciro FROM hedef WHERE donem_id=? AND magaza_id IS NOT NULL", [donemId]
+      "SELECT magaza_id, magaza_ham, prim_grup, hedef_ciro FROM hedef WHERE donem_id=?", [donemId]
     );
-    const hedefMap = new Map(hedefRows.map((r) => [`${r.magaza_id}|${normalizeName(r.marka)}`, Number(r.hedef_ciro)]));
+    const grupKey = (g) => normalizeName(g || "").replace(/\s*\+\s*/g, "+");
+    const hedefGrupMap = new Map();      // "magazaId|GRUP" -> ciro
+    const hedefGrupHamMap = new Map();   // "NORMMAGAZA|GRUP" -> ciro (magaza_id NULL fallback)
+    for (const r of hedefRows) {
+      const g = grupKey(r.prim_grup);
+      if (!g) continue;
+      const c = Number(r.hedef_ciro);
+      if (r.magaza_id != null) hedefGrupMap.set(`${r.magaza_id}|${g}`, c);
+      if (r.magaza_ham) hedefGrupHamMap.set(`${normalizeName(r.magaza_ham)}|${g}`, c);
+    }
 
     // Hedef/sell-out marka adı farkları: "PACO RABANNE" ↔ "RABANNE"
     function markaAnahtarVaryantlari(marka) {
@@ -481,9 +504,11 @@ async function hesapla(donemId, options = {}) {
     }
     const siraMap = new Map();
     const siraList = [];
+    // Marka adı normalizasyonu: "DOLCE & GABBANA" ile "DOLCE&GABBANA" eşleşsin (& boşlukları)
+    const markaKeyNorm = (x) => normalizeName(x).replace(/\s*&\s*/g, "&");
     for (const r of siraRows) {
       const cesit = cesitAnahtar(r.cesit);
-      siraMap.set(`${r.magaza_id}|${cesit}|${normalizeName(r.marka)}`, r.sira);
+      siraMap.set(`${r.magaza_id}|${cesit}|${markaKeyNorm(r.marka)}`, r.sira);
       siraList.push({ magazaId: r.magaza_id, cesit, marka: r.marka, sira: Number(r.sira) });
     }
 
@@ -665,6 +690,7 @@ async function hesapla(donemId, options = {}) {
 
     // ---- 1) Satır bazlı prime esas tutar (sell-out tahsisi) ----
     const hesapSatirlari = [];
+    const inGroupByBeyan = new Map(); // beyan_id -> ürün, atama grubunda mı (sıralama tabanı için)
     // uzman × mağaza × bölüm — aynı noktada iki grup ayrı özet satırı üretir
     const ozetMap = new Map(); // "uzman|magaza|bolum" -> özet akümülatörü
     // Sevil DIOR kolonları: grupta DIOR olmasa bile (DG+LP, Sisley…) DIOR satış dilimi
@@ -739,6 +765,7 @@ async function hesapla(donemId, options = {}) {
         donemId, b.id, b.uzman_id, soMagazaId, atama.bolum_id, b.uniq_kod_id,
         b.urun_id, b.adet, primAdet, +birim.toFixed(2), primeEsas, aciklama,
       ]);
+      inGroupByBeyan.set(b.id, isParfumSatisGrubu(urunMarka, markaGrupMap.get(normalizeName(urunMarka)), b.urun_aks));
       const key = `${b.uzman_id}|${soMagazaId}|${atama.bolum_id}`;
       if (!ozetMap.has(key)) {
         ozetMap.set(key, { atama: { ...atama, magaza_id: soMagazaId }, primeEsas: 0, adet: 0 });
@@ -748,7 +775,7 @@ async function hesapla(donemId, options = {}) {
       }
     }
 
-    ozetEsasiNetDoldur(hesapSatirlari, ozetMap);
+    ozetEsasiNetDoldur(hesapSatirlari, ozetMap, inGroupByBeyan);
 
     // Aynı sonuç: eslesme_durum güncellemesi — N tekil UPDATE yerine batch
     const byDurum = new Map();
@@ -777,36 +804,41 @@ async function hesapla(donemId, options = {}) {
     }
 
     // ---- 2) Koşul değerlendirme yardımcıları ----
-    function ciroHedefiTutuyorMu(magazaId, markalarJson) {
+    function ciroHedefiTutuyorMu(magazaId, markalarJson, grupAdi, esasBaz) {
+      // Birol mantığı: kıyas uzmanın kendi prime-esas'ı (esasBaz).
+      const kendiEsas = Number(esasBaz || 0);
       const markalar = grupMarkalari(markalarJson, tumMarkalar, markaGrupMap);
-      let gerceklesen = 0, hedefToplam = 0, hedefVar = false;
-      for (const m of markalar) {
-        gerceklesen += mapGetMarka(cirodanMarka, magazaId, m);
-        const h = mapGetMarka(hedefMap, magazaId, m);
-        if (h) { hedefToplam += h; hedefVar = true; }
+      let gerceklesen = 0;
+      for (const m of markalar) gerceklesen += mapGetMarka(cirodanMarka, magazaId, m);
+      // Hedef: (mağaza × Prim Grup) tek değeri. Önce magaza_id, yoksa ham ad ile.
+      const g = grupKey(grupAdi);
+      let hedefToplam = hedefGrupMap.get(`${magazaId}|${g}`);
+      if (hedefToplam == null) {
+        const st = normalizeName(magazaMap.get(magazaId) || "");
+        if (st) hedefToplam = hedefGrupHamMap.get(`${st}|${g}`);
       }
-      if (!hedefVar) return { tuttu: false, neden: "hedef verisi yok", gerceklesen, hedefToplam };
-      return { tuttu: gerceklesen >= hedefToplam, gerceklesen, hedefToplam };
+      if (hedefToplam == null) return { tuttu: false, neden: "hedef verisi yok", kendiEsas, gerceklesen, hedefToplam: 0 };
+      return { tuttu: kendiEsas >= hedefToplam, kendiEsas, gerceklesen, hedefToplam };
     }
 
-    function siralamaMarkaTutuyorMu(magazaId, markalarJson, hedefler) {
-      // hedeflerin TAMAMI sağlanmalı: grup markalarından en az N tanesi ilk X'te
+    function siralamaMarkaTutuyorMu(magazaId, markalarJson, hedefler, orMod = true) {
+      // Tek uzman noktaları: eşiklerden biri yeterli (VEYA). 2+ uzman: hepsi gerekli (VE).
       const markalar = grupMarkalari(markalarJson, tumMarkalar, markaGrupMap);
       const sonuclar = [];
       for (const h of hedefler) {
         const sayi = markalar.filter((m) => {
-          const s = siraMap.get(`${magazaId}|PARFUM|${normalizeName(m)}`);
+          const s = siraMap.get(`${magazaId}|PARFUM|${markaKeyNorm(m)}`);
           return s && s <= h.hedef_sira;
         }).length;
         sonuclar.push({ ilk: h.hedef_sira, gereken: h.hedef_marka_sayisi, bulunan: sayi, tuttu: sayi >= (h.hedef_marka_sayisi || 1) });
       }
-      return { tuttu: sonuclar.every((s) => s.tuttu), detay: sonuclar };
+      return { tuttu: orMod ? sonuclar.some((s) => s.tuttu) : sonuclar.every((s) => s.tuttu), detay: sonuclar };
     }
 
     function kategoriSiralamaTutuyorMu(magazaId, markalarJson, kategori, hedefSira) {
       const markalar = grupMarkalari(markalarJson, tumMarkalar, markaGrupMap);
       const enIyi = markalar
-        .map((m) => siraMap.get(`${magazaId}|${kategori}|${normalizeName(m)}`))
+        .map((m) => siraMap.get(`${magazaId}|${kategori}|${markaKeyNorm(m)}`))
         .filter((s) => s != null);
       if (!enIyi.length) return { tuttu: false, neden: "sıralama verisi yok" };
       const min = Math.min(...enIyi);
@@ -824,11 +856,17 @@ async function hesapla(donemId, options = {}) {
     const beymenCiltYazildi = new Set();
 
     // ---- 3) Uzman × mağaza bazında kuralları uygula ----
+    // Kardeş uzmanların (bonus kuralı) kendi prime-esas'ı: (uzman|magaza|bolum) -> esas
+    const esasByUMB = new Map();
+    for (const _acc of ozetMap.values()) {
+      const _a = _acc.atama;
+      esasByUMB.set(`${_a.uzman_id}|${_a.magaza_id}|${_a.bolum_id}`, _acc.primeEsas);
+    }
     for (const [key, acc] of ozetMap) {
       const a = acc.atama;
       const bolumKurallari = (kurallarByBolum.get(a.bolum_id) || []).filter((k) => k.satir_tipi === "kural");
       const detay = [];
-      let satisOran = 0, hedefOran = 0, siralamaOran = 0, bonusOran = 0;
+      let satisOran = 0, hedefOran = 0, siralamaOran = 0, bonusOran = 0, siralamaMarkaOran = 0;
       let diorKolonTutar = 0;
 
       // Sevil + DIOR sıralama → Excel M/O kolonları (Parfüm Tüm VEYA grupta DIOR olmasa bile)
@@ -842,10 +880,19 @@ async function hesapla(donemId, options = {}) {
       const diorParSira = isSevilAtama
         ? Number(siraMap.get(`${a.magaza_id}|PARFUM|DIOR`))
         : null;
+      const diorMakSira = isSevilAtama
+        ? Number(siraMap.get(`${a.magaza_id}|MAKYAJ|DIOR`))
+        : null;
+      const diorCiltSira = isSevilAtama
+        ? Number(siraMap.get(`${a.magaza_id}|CILT|DIOR`))
+        : null;
       const diorEsas = Number(sevilDiorEsas.get(`${a.uzman_id}|${a.magaza_id}`) || 0);
+      const isDiorBolumA = normalizeName(a.bolum_adi || "").includes("DIOR");
       const sevilDiorKolon = isSevilAtama
+        && !isDiorBolumA
         && diorEsas > 0
-        && ((diorMagSira === 1) || (diorParSira > 0 && diorParSira <= 2));
+        && ((diorMagSira === 1) || (diorParSira > 0 && diorParSira <= 2)
+            || (diorMakSira === 1) || (diorCiltSira > 0 && diorCiltSira <= 3));
       // Parfüm Tüm'de DIOR kolon önceliği Puig siralama_marka yığılmasını keser
       const sevilDiorMarkaOncelik = sevilDiorKolon && isTumParfumAtama;
 
@@ -860,7 +907,7 @@ async function hesapla(donemId, options = {}) {
           case "ciro_hedefi":
           case "ciro_hedefi_kosullu":
           case "hedef_tutarsa":
-            sonuc = ciroHedefiTutuyorMu(a.magaza_id, a.markalar);
+            sonuc = ciroHedefiTutuyorMu(a.magaza_id, a.markalar, a.grup_adi, acc.primeEsas);
             if (sonuc.tuttu) hedefOran += Number(k.prim_oran);
             break;
           case "siralama_marka":
@@ -868,10 +915,14 @@ async function hesapla(donemId, options = {}) {
               sonuc = { tuttu: false, neden: "Sevil DIOR kolon önceliği" };
               break;
             }
-            sonuc = hedefler.length
-              ? siralamaMarkaTutuyorMu(a.magaza_id, a.markalar, hedefler)
-              : { tuttu: false, neden: "hedef tanımı yok" };
-            if (sonuc.tuttu) siralamaOran += Number(k.prim_oran);
+            {
+              const tekUzman = /TEK\s*UZMAN/i.test(a.bolum_adi || "");
+              const sayimMarka = tekUzman ? (a.hamMarkalar || a.markalar) : a.markalar;
+              sonuc = hedefler.length
+                ? siralamaMarkaTutuyorMu(a.magaza_id, sayimMarka, hedefler, true)
+                : { tuttu: false, neden: "hedef tanımı yok" };
+            }
+            if (sonuc.tuttu) siralamaMarkaOran += Number(k.prim_oran);
             break;
           case "cilt_siralama":
             sonuc = kategoriSiralamaTutuyorMu(a.magaza_id, a.markalar, "CILT", hedefler[0]?.hedef_sira || 3);
@@ -901,6 +952,21 @@ async function hesapla(donemId, options = {}) {
             sonuc = kategoriSiralamaTutuyorMu(a.magaza_id, a.markalar, "GENEL", hedefler[0]?.hedef_sira || 1);
             if (sonuc.tuttu) siralamaOran += Number(k.prim_oran);
             break;
+          case "ozel": {
+            // "SIRALAMA İLK N OLURSA" (Sensai) → GENEL sıralaması; "CİLT BAKIMINDA İLK N"
+            // (Sisley) → CİLT; makyaj/saç/parfüm anahtar kelimesine göre kategori seçilir.
+            const ad = normalizeName(k.kriter_adi || "");
+            const nMatch = ad.match(/ILK\s*(\d+)/);
+            const nSira = nMatch ? Number(nMatch[1]) : 1;
+            let kat = "GENEL";
+            if (ad.includes("CILT")) kat = "CILT";
+            else if (ad.includes("MAKYAJ")) kat = "MAKYAJ";
+            else if (ad.includes("SAC")) kat = "SAC";
+            else if (ad.includes("PARF")) kat = "PARFUM";
+            sonuc = kategoriSiralamaTutuyorMu(a.magaza_id, a.markalar, kat, nSira);
+            if (sonuc.tuttu) siralamaOran += Number(k.prim_oran);
+            break;
+          }
           default:
             sonuc = { tuttu: false, neden: "manuel değerlendirme gerekli (özel kural)" };
         }
@@ -909,26 +975,23 @@ async function hesapla(donemId, options = {}) {
 
       // Sevil DIOR kolonları: DIOR satış dilimi × oran (Excel M/O satır bazlı)
       const diorKolonKey = `${a.uzman_id}|${a.magaza_id}`;
+      // Sevil DIOR (genel Dior primi): 4 kolon, HEPSİ tam DIOR cirosu üzerinden.
+      //   Mağaza 1.lik %0,50 | Makyaj ilk1 %0,33 | Parfüm ilk2 %0,34 | Cilt ilk3 %0,33
       if (sevilDiorKolon && !sevilDiorKolonVerildi.has(diorKolonKey)) {
         sevilDiorKolonVerildi.add(diorKolonKey);
-        if (diorMagSira === 1) {
-          const tutar = +(diorEsas * 0.5 / 100).toFixed(2);
+        const diorPush = (kosul, kriter, oran, ad, sira) => {
+          if (!kosul) return;
+          const tutar = +(diorEsas * oran / 100).toFixed(2);
           diorKolonTutar += tutar;
           detay.push({
-            kural: "DIOR Mağaza 1.lik (Sevil)",
-            kriter: "magaza_birinci", oran: 0.5, tuttu: true, sira: 1,
-            esas_baz: +diorEsas.toFixed(2), tutar,
+            kural: ad, kriter, oran, tuttu: true, sira,
+            esas_baz: +diorEsas.toFixed(2), tutar, tip: "sevil_dior",
           });
-        }
-        if (diorParSira > 0 && diorParSira <= 2) {
-          const tutar = +(diorEsas * 0.33 / 100).toFixed(2);
-          diorKolonTutar += tutar;
-          detay.push({
-            kural: "DIOR Parfüm ilk 2 (Sevil)",
-            kriter: "parfum_siralama", oran: 0.33, tuttu: true, sira: diorParSira,
-            esas_baz: +diorEsas.toFixed(2), tutar,
-          });
-        }
+        };
+        diorPush(diorMagSira === 1, "magaza_birinci", 0.5, "DIOR Mağaza 1.lik (Sevil)", 1);
+        diorPush(diorMakSira === 1, "makyaj_siralama", 0.33, "DIOR Makyaj ilk 1 (Sevil)", diorMakSira);
+        diorPush(diorParSira > 0 && diorParSira <= 2, "parfum_siralama", 0.34, "DIOR Parfüm ilk 2 (Sevil)", diorParSira);
+        diorPush(diorCiltSira > 0 && diorCiltSira <= 3, "cilt_siralama", 0.33, "DIOR Cilt ilk 3 (Sevil)", diorCiltSira);
       }
 
       // iki_grup_bonus: aynı bölüm adını taşıyan başlık bölümündeki bonus kuralı
@@ -942,10 +1005,10 @@ async function hesapla(donemId, options = {}) {
           (x) => x.magaza_id === a.magaza_id && x.bolum_adi === a.bolum_adi
         );
         const hepsiTuttu = kardesler.length > 0 && kardesler.every((x) => {
-          const ciro = ciroHedefiTutuyorMu(x.magaza_id, x.markalar);
+          const ciro = ciroHedefiTutuyorMu(x.magaza_id, x.markalar, x.grup_adi, esasByUMB.get(`${x.uzman_id}|${x.magaza_id}|${x.bolum_id}`) || 0);
           const ilkSira = (kurallarByBolum.get(x.bolum_id) || []).find((r) => r.kriter_key === "siralama_marka");
           const sira = ilkSira
-            ? siralamaMarkaTutuyorMu(x.magaza_id, x.markalar, hedeflerByKural.get(ilkSira.id) || [])
+            ? siralamaMarkaTutuyorMu(x.magaza_id, (/TEK\s*UZMAN/i.test(x.bolum_adi||"") ? (x.hamMarkalar||x.markalar) : x.markalar), hedeflerByKural.get(ilkSira.id) || [], true)
             : { tuttu: false };
           return ciro.tuttu && sira.tuttu;
         });
@@ -955,12 +1018,14 @@ async function hesapla(donemId, options = {}) {
 
       // Tavan uygulaması (bonus + Sevil DIOR kolon tutarı tavan dışı — Excel ayrı kolon)
       const tavan = Number(a.grup_toplam_oran || a.max_prim_oran || 99);
-      let toplamOran = satisOran + hedefOran + siralamaOran;
+      let toplamOran = satisOran + hedefOran + siralamaOran + siralamaMarkaOran;
       if (toplamOran > tavan) {
         detay.push({ kural: "TAVAN", not: `%${toplamOran} -> %${tavan}` });
-        // Tavanı aşan kısmı sıralama kaleminden düş
-        siralamaOran -= toplamOran - tavan;
-        if (siralamaOran < 0) { hedefOran += siralamaOran; siralamaOran = 0; }
+        // Tavanı aşan kısmı önce diğer sıralamadan, sonra parfüm merdiveninden, sonra hedeften düş
+        let asim = toplamOran - tavan;
+        const d1 = Math.min(asim, siralamaOran); siralamaOran -= d1; asim -= d1;
+        const d2 = Math.min(asim, siralamaMarkaOran); siralamaMarkaOran -= d2; asim -= d2;
+        if (asim > 0) { hedefOran = Math.max(0, hedefOran - asim); asim = 0; }
         toplamOran = tavan;
       }
 
@@ -1007,9 +1072,12 @@ async function hesapla(donemId, options = {}) {
       // Sistemi sade tutmak için kaldırıldı: yalnızca prim_kural tablosundaki
       // kurallar uygulanır. İhtiyaç olursa prim_kural tablosuna eklenmeli.
 
+      // Sıralama primi TABANI: sadece grup-içi esas (grup dışı satışlar hariç — Birol mantığı).
+      const grupEsas = +((acc.grupEsas != null ? acc.grupEsas : acc.primeEsas)).toFixed(2);
+      detay.push({ kriter: "grup_esas_baz", grupEsas });
       const satisPrim = +(satisEsas * satisOran / 100).toFixed(2);
       const hedefPrim = +(esas * hedefOran / 100).toFixed(2);
-      const siralamaPrim = +(esas * siralamaOran / 100 + diorKolonTutar + beymenCiltTutar).toFixed(2);
+      const siralamaPrim = +(grupEsas * siralamaMarkaOran / 100 + esas * siralamaOran / 100 + diorKolonTutar + beymenCiltTutar).toFixed(2);
       const bonusPrim = +(esas * bonusOran / 100).toFixed(2);
       const araToplam = satisPrim + hedefPrim + siralamaPrim + bonusPrim;
       const ekPrim = +(araToplam * Number(donem.ek_prim_oran || 0) / 100).toFixed(2);
