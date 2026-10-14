@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import DonemSec from "../components/DonemSec";
 import ExcelFiltreTablo from "../components/ExcelFiltreTablo";
@@ -20,7 +20,7 @@ const SAYISAL_SATIR = new Set([
   "uzman_toplam_satis", "magaza_toplam_satis", "kontrol",
   "adet", "fiyat", "toplam", "prim_adet", "odenen_adet", "mukerrer_adet", "prim_adet_net", "sellout_adet",
   "magaza_kdv_haric_ciro", "birim_ciro", "prime_esas_tutar", "prime_esas_tutar_net",
-  "prim_yuzde_1", "sephora_sensai", "sephora_bagdat_beymen", "sevil_lp",
+  "prim_yuzde_1", "sephora_bagdat_beymen", "sephora_sensai", "sevil_lp",
   "toplam_satis_primi", "nokta_uzman_sayisi",
 ]);
 
@@ -31,10 +31,10 @@ const KOLONLAR = [
   { key: "satis_grup", ad: "Satış Grup", tip: "metin", genislik: 130, renk: "siyah" },
   { key: "E", ad: "Prime Esas Toplam Tutar", tip: "para", renk: "siyah" },
   { key: "F", ad: "Prim % 1", tip: "para", renk: "satis" },
-  { key: "G", ad: "Sensai Sephora +\nSisley Cadde + %1", tip: "para", renk: "satis" },
   { key: "H", ad: "Sephora Bağdat + Beymen + % 0,05", tip: "para", renk: "satis" },
-  { key: "I", ad: "Toplam Sevil LP", tip: "para", renk: "satis" },
-  { key: "J", ad: "Toplam Toplam", tip: "para", renk: "satis" },
+  { key: "G", ad: "Sensai Sephora + %1", tip: "para", renk: "satis" },
+  { key: "I", ad: "Sevil DG + LP\n+% 0,05", tip: "para", renk: "satis" },
+  { key: "J", ad: "Toplam Satış Primi", tip: "para", renk: "satis" },
   { key: "K", ad: "Hedefler", tip: "para", renk: "hedef" },
   { key: "L", ad: "Hedef\nPrim ( % 0,50 )", tip: "para", renk: "hedef" },
   { key: "M", ad: "Dior Mağaza\n1.Lik  % 0,50", tip: "para", renk: "dior" },
@@ -51,11 +51,6 @@ const KOLONLAR = [
   { key: "X", ad: "Prim\nAçıklama", tip: "metin", renk: "aciklama" },
   { key: "Y", ad: "Toplam Prim\nYüzdesi", tip: "yuzde", renk: "aciklama" },
 ];
-
-const PIVOT_KOLONLAR = KOLONLAR.map((k) => ({
-  ...k,
-  sayisal: k.tip === "para" || k.tip === "yuzde",
-}));
 
 /** Excel Prim Hesaplama başlık renkleri */
 function pivotBaslikRengi(renk) {
@@ -341,6 +336,14 @@ export default function PrimRaporu() {
   }
 
   const donemAd = satirVeri?.donem_ad || veri?.donem_ad;
+  const pivotKolonlar = useMemo(() => {
+    const ay = String(donemAd || "").trim().split(/\s+/)[0] || "";
+    return KOLONLAR.map((k) => ({
+      ...k,
+      ad: k.key === "K" && ay ? `${ay} Hedefler` : k.ad,
+      sayisal: k.tip === "para" || k.tip === "yuzde",
+    }));
+  }, [donemAd]);
   const satirKolonlar = (satirVeri?.kolonlar || []).map((k) => ({
     ...k,
     sayisal: SAYISAL_SATIR.has(k.key),
@@ -444,7 +447,7 @@ export default function PrimRaporu() {
 
       {gorunum === "toplanmis" && veri?.satirlar?.length > 0 && (
         <ExcelFiltreTablo
-          kolonlar={PIVOT_KOLONLAR}
+          kolonlar={pivotKolonlar}
           satirlar={veri.satirlar}
           rowKey={(_, i) => i}
           degerAl={pivotDegerAl}
