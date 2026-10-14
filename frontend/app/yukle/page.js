@@ -11,6 +11,7 @@ const DOSYALAR = [
     kisa: "Uzman ve mağaza eşleşmeleri",
     hazirAnahtar: "atama",
     logTipleri: ["uzman-magaza", "uzman_magaza"],
+    zorunlu: true,
   },
   {
     tip: "sellout",
@@ -18,6 +19,7 @@ const DOSYALAR = [
     kisa: "Resmî bayi satış verisi",
     hazirAnahtar: "sellout",
     logTipleri: ["sellout"],
+    zorunlu: true,
   },
   {
     tip: "zeops",
@@ -25,20 +27,23 @@ const DOSYALAR = [
     kisa: "Uzman satış beyanları",
     hazirAnahtar: "zeops",
     logTipleri: ["zeops"],
+    zorunlu: true,
   },
   {
     tip: "hedef",
     baslik: "Ciro Hedefleri",
-    kisa: "Mağaza ve marka hedefleri",
+    kisa: "Mağaza ve marka hedefleri — hedef primi için",
     hazirAnahtar: "hedef",
     logTipleri: ["hedef"],
+    zorunlu: false,
   },
   {
     tip: "siralama",
     baslik: "Marka Sıralamaları",
-    kisa: "Aylık marka sıralamaları",
+    kisa: "Aylık marka sıralamaları — sıralama/bonus için",
     hazirAnahtar: "siralama",
     logTipleri: ["siralama"],
+    zorunlu: false,
   },
   {
     tip: "stok",
@@ -46,6 +51,7 @@ const DOSYALAR = [
     kisa: "Ürün master tamamlama",
     hazirAnahtar: "stok",
     logTipleri: ["stok", "uniq_kod"],
+    zorunlu: true,
   },
 ];
 
@@ -183,7 +189,7 @@ export default function PrimHesaplama() {
     return (acikPanel.loglar || []).some((log) => dosya.logTipleri.includes(log.tip));
   }
 
-  const tumDosyalarHazir = DOSYALAR.every(dosyaHazir);
+  const zorunluDosyalarHazir = DOSYALAR.filter((d) => d.zorunlu).every(dosyaHazir);
   const primVar = Number(acikPanel.dashboard?.prim?.kayit || 0) > 0;
 
   const yilSecenekleri = useMemo(() => {
@@ -445,7 +451,7 @@ export default function PrimHesaplama() {
   }
 
   async function primHesapla() {
-    if (!tumDosyalarHazir || !acikId) return;
+    if (!zorunluDosyalarHazir || !acikId) return;
     setHesaplaniyor(true);
     setHesapIlerleme({ asama: "basliyor" });
     setMesaj({ tip: "notr", metin: "Prim hesaplanıyor, lütfen bekleyin…" });
@@ -657,7 +663,8 @@ export default function PrimHesaplama() {
               <div>
                 <h3>{acikDonem.ad}</h3>
                 <p>
-                  {DOSYALAR.filter(dosyaHazir).length}/{DOSYALAR.length} dosya yüklü
+                  {DOSYALAR.filter((d) => d.zorunlu && dosyaHazir(d)).length}/
+                  {DOSYALAR.filter((d) => d.zorunlu).length} zorunlu dosya yüklü
                 </p>
               </div>
             </div>
@@ -712,7 +719,9 @@ export default function PrimHesaplama() {
                   <div className="dosya-bilgi">
                     <div>
                       <h4>{dosya.baslik}</h4>
-                      <span className="zorunlu">Zorunlu</span>
+                      <span className={dosya.zorunlu ? "zorunlu" : "opsiyonel"}>
+                        {dosya.zorunlu ? "Zorunlu" : "Opsiyonel"}
+                      </span>
                     </div>
                     <p>{dosya.kisa}</p>
                     <small className="dosya-format">
@@ -790,9 +799,9 @@ export default function PrimHesaplama() {
           <div className="panel-alt">
             <div className="panel-alt-sol">
               <p>
-                {tumDosyalarHazir
-                  ? "Tüm dosyalar hazır. Prim hesaplanabilir."
-                  : "Tüm dosyaları yükleyin."}
+                {zorunluDosyalarHazir
+                  ? "Zorunlu dosyalar hazır. Prim hesaplanabilir."
+                  : "Zorunlu dosyaları yükleyin (hedef ve sıralama opsiyonel)."}
               </p>
               {primVar && (
                 <p className="panel-alt-ikincil">Bu dönem için hesap sonucu mevcut.</p>
@@ -816,7 +825,7 @@ export default function PrimHesaplama() {
               <button
                 className="btn prim-cta"
                 disabled={
-                  !tumDosyalarHazir ||
+                  !zorunluDosyalarHazir ||
                   !!yukleniyor ||
                   hesaplaniyor ||
                   acikDonem.durum === "kapandi"
