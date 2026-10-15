@@ -2338,6 +2338,24 @@ app.get("/api/prim-raporu/:donemId", wrap(async (req, res) => {
   res.json({ ...veri, hesap_durum: aktifHesapJob(req.params.donemId) });
 }));
 
+/** 1-tabanlı kolon numarası → Excel harfi (1=A … 27=AA). */
+function excelColHarf(n) {
+  let s = "";
+  let x = Number(n) || 0;
+  while (x > 0) {
+    const m = (x - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    x = Math.floor((x - 1) / 26);
+  }
+  return s;
+}
+
+/** ExcelJS formül hücresi (cached result ile). */
+function excelFormula(formula, result) {
+  const n = Number(result);
+  return { formula, result: Number.isFinite(n) ? n : 0 };
+}
+
 // ---------- Satır satır Prim Çalışma (sistem hesabı, dönem bazlı) ----------
 const PRIM_SATIR_KOLONLAR = [
   { key: "ziyaret_id", ad: "Ziyaret ID", renk: "beyaz" },
@@ -3464,6 +3482,89 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   ]);
   // Birol: 1.234,56TL. / sıfırda -TL.
   const PARA_NUM_FMT = '#,##0.00"TL.";-#,##0.00"TL.";"-TL."';
+  const colIdx = (key) => PRIM_SATIR_KOLONLAR.findIndex((k) => k.key === key) + 1;
+  const COL_Y = colIdx("prime_esas_tutar");
+  const COL_Z = colIdx("prim_yuzde_1");
+  const COL_AA = colIdx("sephora_bagdat_beymen");
+  const COL_AB = colIdx("sephora_sensai");
+  const COL_AC = colIdx("sevil_lp");
+  const COL_AD = colIdx("toplam_satis_primi");
+  const COL_O = colIdx("uzman_toplam_satis");
+  const COL_P = colIdx("magaza_toplam_satis");
+  const COL_Q = colIdx("kontrol");
+  const YH = excelColHarf(COL_Y);
+  const ZH = excelColHarf(COL_Z);
+  const AAH = excelColHarf(COL_AA);
+  const ABH = excelColHarf(COL_AB);
+  const ACH = excelColHarf(COL_AC);
+
+  /** Satış primi + kontrol hücrelerine Excel formülü yazar. */
+  function uygulaSatirFormulleri(row, s) {
+    const r = row.number;
+    const magaza = String(s.sellout_magaza || s.magaza_ham || "").toLocaleUpperCase("tr-TR");
+    const bayi = String(s.bayi || "").toLocaleUpperCase("tr-TR").trim();
+    const markaAscii = turkceAscii(s.marka || "");
+    const altKanal = String(s.alt_kanal || "").toLocaleUpperCase("tr-TR");
+    const { taban, ek } = satisBasiOranlari(s.satis_basi_oran);
+    const isBagdat = magaza.includes("BAĞDAT") || magaza.includes("BAGDAT");
+    const bagdatSisley = isBagdat && markaAscii.includes("SISLEY");
+    const isKeeper =
+      markaAscii.includes("PRAIRIE") || markaAscii === "LP" ||
+      markaAscii.includes("SISLEY") || markaAscii.includes("SENSAI") ||
+      markaAscii.includes("HERMES") || markaAscii.includes("DIOR") ||
+      markaAscii.includes("DOLCE") || markaAscii.includes("GABBANA");
+    const beymenKeeper = bayi === "BEYMEN" && isKeeper;
+    const sevil = turkceAscii(altKanal) === "SEVIL" || turkceAscii(bayi) === "SEVIL";
+    const sevilLpMarka = markaAscii.includes("PRAIRIE") || markaAscii.includes("DOLCE") || markaAscii.includes("GABBANA");
+    const sensaiOk = bayi === "SEPHORA" && markaAscii.includes("SENSAI");
+
+    // Kontrol = mağaza toplam − uzman toplam
+    row.getCell(COL_Q).value = excelFormula(
+      `${excelColHarf(COL_P)}${r}-${excelColHarf(COL_O)}${r}`,
+      s.kontrol
+    );
+
+    // Prim %1 = esas × taban/100
+    row.getCell(COL_Z).value = excelFormula(
+      `ROUND(${YH}${r}*${taban}/100,2)`,
+      s.prim_yuzde_1
+    );
+
+    // Bağdat Sisley sabit %0,5; Beymen keeper ek oran
+    if (bagdatSisley) {
+      row.getCell(COL_AA).value = excelFormula(`ROUND(${YH}${r}*0.005,2)`, s.sephora_bagdat_beymen);
+    } else if (beymenKeeper && ek > 0) {
+      row.getCell(COL_AA).value = excelFormula(`ROUND(${YH}${r}*${ek}/100,2)`, s.sephora_bagdat_beymen);
+    } else {
+      row.getCell(COL_AA).value = 0;
+    }
+
+    // Sensai Sephora +%1 = Prim %1 (aynı satır)
+    if (sensaiOk) {
+      row.getCell(COL_AB).value = excelFormula(ZH + r, s.sephora_sensai);
+    } else {
+      row.getCell(COL_AB).value = 0;
+    }
+
+    // Sevil LP/DG %0,5
+    if (sevil && sevilLpMarka) {
+      row.getCell(COL_AC).value = excelFormula(`ROUND(${YH}${r}*0.005,2)`, s.sevil_lp);
+    } else {
+      row.getCell(COL_AC).value = 0;
+    }
+
+    // Toplam satış primi
+    row.getCell(COL_AD).value = excelFormula(
+      `${ZH}${r}+${AAH}${r}+${ABH}${r}+${ACH}${r}`,
+      s.toplam_satis_primi
+    );
+
+    for (const c of [COL_Q, COL_Z, COL_AA, COL_AB, COL_AC, COL_AD]) {
+      const cell = row.getCell(c);
+      cell.alignment = { horizontal: "right" };
+      if (c !== COL_Q) cell.numFmt = PARA_NUM_FMT;
+    }
+  }
 
   function satirDolgu(s) {
     // Tüm veri satırları düz beyaz — durum bazlı arka plan rengi kaldırıldı.
@@ -3557,6 +3658,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
         }
       });
     }
+    uygulaSatirFormulleri(row, s);
     row.commit();
   }
 
@@ -3575,6 +3677,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
         if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
       }
     });
+    uygulaSatirFormulleri(row, s);
     row.commit();
   }
 
@@ -3667,6 +3770,19 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
     };
   }
 
+  // Excel kolon harfleri (kolonlar dizisi sırası: E,F,H,G,I,J… → harfler E,F,G,H,I,J…)
+  const kIdx = (key) => kolonlar.findIndex((k) => k.key === key) + 1;
+  const cE = excelColHarf(kIdx("E"));
+  const cF = excelColHarf(kIdx("F"));
+  const cBagdat = excelColHarf(kIdx("H")); // Excel'de G harfi (Bağdat/Beymen)
+  const cSensai = excelColHarf(kIdx("G")); // Excel'de H harfi (Sensai)
+  const cI = excelColHarf(kIdx("I"));
+  const cJ = excelColHarf(kIdx("J"));
+  const cK = excelColHarf(kIdx("K"));
+  const cL = excelColHarf(kIdx("L"));
+  const cW = excelColHarf(kIdx("W"));
+  const PARA_FMT = '#,##0.00"TL.";-#,##0.00"TL.";"-TL."';
+
   // Veri satırları
   // Tekrar eden etiketleri (Uzman / Prim Grup / Sell-Out Mağaza) yalnız ilk satırda göster.
   let prevUz = null, prevGr = null, prevMg = null;
@@ -3695,6 +3811,63 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
       return v;
     });
     const row = ws.addRow(rowData);
+    const r = row.number;
+
+    // Detay satırlarında satış/hedef/toplam formülleri (formül çubuğunda görünür)
+    if (isDetay) {
+      const taban = Number.isFinite(Number(s.satis_taban_oran)) ? Number(s.satis_taban_oran) : 1;
+      const ek = Number.isFinite(Number(s.satis_ek_oran)) ? Number(s.satis_ek_oran) : 0.5;
+      const bayi = String(s.bayi || "").toLocaleUpperCase("tr-TR");
+      const mag = String(s.magaza || "").toLocaleUpperCase("tr-TR");
+      const isBagdat = mag.includes("BAĞDAT") || mag.includes("BAGDAT");
+
+      row.getCell(kIdx("F")).value = excelFormula(`ROUND(${cE}${r}*${taban}/100,2)`, s.F);
+
+      if (Number(s.H) > 0) {
+        const hRate = bayi === "BEYMEN" ? ek / 100 : 0.005;
+        row.getCell(kIdx("H")).value = excelFormula(`ROUND(${cE}${r}*${hRate},2)`, s.H);
+      } else {
+        row.getCell(kIdx("H")).value = 0;
+      }
+
+      if (Number(s.G) > 0) {
+        row.getCell(kIdx("G")).value = excelFormula(cF + r, s.G);
+      } else {
+        row.getCell(kIdx("G")).value = 0;
+      }
+
+      if (Number(s.I) > 0) {
+        row.getCell(kIdx("I")).value = excelFormula(`ROUND(${cE}${r}*0.005,2)`, s.I);
+      } else {
+        row.getCell(kIdx("I")).value = 0;
+      }
+
+      row.getCell(kIdx("J")).value = excelFormula(
+        `${cF}${r}+${cBagdat}${r}+${cSensai}${r}+${cI}${r}`,
+        s.J
+      );
+
+      const K = Number(s.K) || 0;
+      const L = Number(s.L) || 0;
+      if (K > 0) {
+        row.getCell(kIdx("L")).value = excelFormula(
+          `IF(${cE}${r}>=${cK}${r},ROUND(${cE}${r}*0.005,2),0)`,
+          L
+        );
+      } else {
+        row.getCell(kIdx("L")).value = 0;
+      }
+
+      // W = J+L+M+N+O+P+Q+R+S+T+U
+      const sumParts = ["J", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U"]
+        .map((k) => excelColHarf(kIdx(k)) + r)
+        .join("+");
+      row.getCell(kIdx("W")).value = excelFormula(sumParts, s.W);
+      row.getCell(kIdx("Y")).value = excelFormula(
+        `IF(${cE}${r}=0,0,${cW}${r}/${cE}${r})`,
+        s.Y
+      );
+    }
 
     // Her hücreye manuel dokun — boş hücreler dahil (renk için)
     for (let i = 1; i <= kolonlar.length; i++) {
@@ -3702,11 +3875,13 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
       const kol = kolonlar[i - 1];
       if (!kol) continue;
 
-      // Sayı / yüzde formatı
-      if (kol.sayi && typeof cell.value === "number") {
-        cell.numFmt = '#,##0.00"TL.";-#,##0.00"TL.";"-TL."';
+      // Sayı / yüzde formatı (formül hücreleri dahil)
+      const isNum = typeof cell.value === "number"
+        || (cell.value && typeof cell.value === "object" && cell.value.formula != null);
+      if (kol.sayi && isNum) {
+        cell.numFmt = PARA_FMT;
         cell.alignment = { horizontal: "right" };
-      } else if (kol.yuzde && typeof cell.value === "number") {
+      } else if (kol.yuzde && isNum) {
         cell.numFmt = "0.00%";
         cell.alignment = { horizontal: "right" };
       }
