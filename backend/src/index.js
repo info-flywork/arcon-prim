@@ -1954,9 +1954,10 @@ async function primRaporuVerisi(donemId) {
         let kEsas = 0;
         for (const v of km.values()) kEsas += Number(v || 0);
         H = +(kEsas * (ek / 100)).toFixed(2);
-      } else if (isBagdat && ek > 0) {
+      } else if (isBagdat) {
+        // Bağdat Sisley: sabit %0,5 (bölüm satis_basi %2 olsa bile)
         const sisleyE = Number(km.get("SISLEY") || 0);
-        H = +(sisleyE * (ek / 100)).toFixed(2);
+        H = +(sisleyE * 0.005).toFixed(2);
       }
     }
     // I: Sevil LP/DG — Birol sabit %0,5 (satis_basi bağından ayrı).
@@ -2253,9 +2254,10 @@ async function primRaporuVerisi(donemId) {
     if (bayi === "BEYMEN" && ekOran > 0) {
       const kEsas = Number(sgKeeperKovaMap.get(key)?.get(sg) || 0);
       row.H = +(kEsas * (ekOran / 100)).toFixed(2);
-    } else if (isBagdat && ekOran > 0) {
+    } else if (isBagdat) {
+      // Bağdat Sisley: sabit %0,5
       const sEsas = Number(sgSisleyKovaMap.get(key)?.get(sg) || 0);
-      row.H = +(sEsas * (ekOran / 100)).toFixed(2);
+      row.H = +(sEsas * 0.005).toFixed(2);
     } else {
       row.H = 0;
     }
@@ -2654,10 +2656,9 @@ function satirSatisPrimleri(primeEsas, meta) {
   let sensai = 0;
   if (bayi === "SEPHORA" && turkceAscii(marka).includes("SENSAI")) sensai = prim1;
 
-  // Sephora Bağdat: yalnız Sisley markası. Beymen: yalnız KEEPER markaları
-  // (La Prairie, Sisley, Sensai, Hermes, DG, Dior) — MARKA bazında.
-  // Niche (DBS/Byredo/Penhaligon/L'Artisan) ve Puig/Givenchy bu kolonda YOK.
-  // Ek oran prim_kural.satis_basi'ndan gelir (%1 üstü kalan).
+  // Sephora Bağdat Sisley: Birol sabit %0,5 (satis_basi ek oranına bağlanmaz —
+  // Cadde bölümü %2 olsa bile bu kolon %0,5 kalır; aksi halde Prim %1 ile aynı yazar).
+  // Beymen keeper: ek oran = max(0, satis_basi − 1) (örn. %1,5 → %0,5).
   const markaAscii = turkceAscii(marka);
   const isKeeperMarka =
     markaAscii.includes("PRAIRIE") || markaAscii === "LP" ||
@@ -2668,7 +2669,9 @@ function satirSatisPrimleri(primeEsas, meta) {
   const isBagdat = magaza.includes("BAĞDAT") || magaza.includes("BAGDAT");
   const bagdatSisley = isBagdat && markaAscii.includes("SISLEY");
   const beymenKeeper = bayi === "BEYMEN" && isKeeperMarka;
-  if ((bagdatSisley || beymenKeeper) && ek > 0) {
+  if (bagdatSisley) {
+    bagdatBeymen = +(E * 0.005).toFixed(2);
+  } else if (beymenKeeper && ek > 0) {
     bagdatBeymen = +(E * (ek / 100)).toFixed(2);
   }
 
@@ -3459,6 +3462,8 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     "prim_yuzde_1", "sephora_bagdat_beymen", "sephora_sensai", "sevil_lp",
     "toplam_satis_primi",
   ]);
+  // Birol: 1.234,56TL. / sıfırda -TL.
+  const PARA_NUM_FMT = '#,##0.00"TL.";-#,##0.00"TL.";"-TL."';
 
   function satirDolgu(s) {
     // Tüm veri satırları düz beyaz — durum bazlı arka plan rengi kaldırıldı.
@@ -3540,7 +3545,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
         const k = PRIM_SATIR_KOLONLAR[col - 1];
         if (k && sayiKolon.has(k.key)) {
           cell.alignment = { horizontal: "right" };
-          if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
+          if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
         }
       });
     } else {
@@ -3548,7 +3553,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
         const k = PRIM_SATIR_KOLONLAR[col - 1];
         if (k && sayiKolon.has(k.key)) {
           cell.alignment = { horizontal: "right" };
-          if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
+          if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
         }
       });
     }
@@ -3567,7 +3572,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
       const k = PRIM_SATIR_KOLONLAR[col - 1];
       if (k && sayiKolon.has(k.key)) {
         cell.alignment = { horizontal: "right" };
-        if (paraKolon.has(k.key)) cell.numFmt = "#,##0.00";
+        if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
       }
     });
     row.commit();
