@@ -17,15 +17,25 @@ function normBar(v) {
 /**
  * LAP65187548 ↔ 65187548 gibi önekli/öneksiz ref varyantları.
  * Kısa gürültüyü elemek için en az 5 karakterlik gövde şart.
+ *
+ * ÖNEMLİ: Sıfırla dolu gövdeler (000000037, 000000149) varyant olmaz —
+ * yoksa uniq kod PJG000000037 / HRM000000149 ile DIOR E000000037 / E000000149
+ * aynı havuza düşüp mağazada olmayan ürüne prim yazar.
  */
 function refKodVariants(v) {
   const k = normKod(v);
   if (!k) return [];
   const out = new Set([k]);
+  const addBody = (body) => {
+    if (!body || body.length < 5) return;
+    // Sıfır-pad'li uniq/E-kod gövdesi → çapraz marka çakışması
+    if (/^0/.test(body)) return;
+    out.add(body);
+  };
   const m = k.match(/^[A-Z]{1,6}(\d{5,}[A-Z0-9]*)$/);
-  if (m && m[1].length >= 5) out.add(m[1]);
+  if (m) addBody(m[1]);
   const m2 = k.match(/(\d{5,}[A-Z0-9]*)$/);
-  if (m2 && m2[1].length >= 5) out.add(m2[1]);
+  if (m2) addBody(m2[1]);
   return [...out];
 }
 

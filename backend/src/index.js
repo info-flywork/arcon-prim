@@ -2404,13 +2404,14 @@ function tarihYaz(v) {
 
 /** Excel Prim Çalışma — Rapor Açıklama yalnızca bu üç değer. Grup dışı Satış Türü'nde. */
 function raporAciklamaUret(hAciklama, eslesmeDurum, extra = {}) {
+  const so = Number(extra.selloutAdet ?? extra.sellout_adet ?? 0);
+  // Mağazada sell-out yoksa hesap "Ok" yazmış olsa bile prim yok — eşleşmeyen.
+  if (so <= 0) return "Mağazada Eşleşmeyen Satış";
   const raw = String(hAciklama || "").trim();
   if (/eşleşmeyen|eslesmeyen|sell-out/i.test(raw)) return "Mağazada Eşleşmeyen Satış";
   if (/^ok\b/i.test(raw)) return "Ok";
   if (/^kısmi ok/i.test(raw) || /[üu]kerrer/i.test(raw)) return "Mükerrer Giriş";
-  const so = Number(extra.selloutAdet ?? extra.sellout_adet ?? 0);
-  if (so > 0) return "Ok";
-  return "Mağazada Eşleşmeyen Satış";
+  return "Ok";
 }
 
 /** Excel Satış Grup: PUIG/BPI gibi havuzlarda AKS; marka=grup markalarında marka adı. */
@@ -3009,13 +3010,14 @@ async function loadSelloutUniqMap(donemId) {
 function enrichRowsSelloutFromMap(rows, { soUniq, canonOf }) {
   if (!rows?.length || !soUniq?.size) return rows;
   for (const r of rows) {
-    if (Number(r.sellout_adet || 0) > 0) continue;
     const canon = canonOf(r.kod, r.barkod, r.uniq_kod);
     if (!canon) continue;
     const magId = r.so_magaza_id || r.magaza_id;
     if (!magId) continue;
     const hit = soUniq.get(`${magId}|${canon}`);
     if (!hit || hit.adet <= 0) continue;
+    // Hesap motoru uniq havuzunu kullanır (eski/yeni barkod). SQL exact match
+    // (örn. 1 adet) havuzu ezmesin — aksi halde Mağaza=1 iken Prim Adet=2 görünür.
     r.sellout_adet = hit.adet;
     r.sellout_ciro = hit.ciro;
   }
@@ -3043,12 +3045,14 @@ function primSatirMap(r) {
   const selloutAdet = Number(r.sellout_adet || 0);
   const selloutCiro = Number(r.sellout_ciro || 0);
   const adet = Number(r.adet || 0);
-  const primeEsas = Number(r.prime_esas_tutar || 0);
+  // Sell-out 0 iken prim_hesap_satir'da kalmış Ok/prim → kes (magaza toplam 0 + prim hatası)
+  const selloutYok = selloutAdet <= 0;
+  const primeEsas = selloutYok ? 0 : Number(r.prime_esas_tutar || 0);
   const raporAciklama = raporAciklamaUret(r.h_aciklama, r.eslesme_durum, {
     ...grupDisiExtra(r, aks),
     selloutAdet,
   });
-  const primAdet = Number(r.prim_adet || 0);
+  const primAdet = selloutYok ? 0 : Number(r.prim_adet || 0);
   const mukerrerMi = String(raporAciklama || "").toLocaleLowerCase("tr-TR").includes("mükerrer");
   const mukerrerAdet = mukerrerMi ? primAdet : 0;
   const primAdetNet = mukerrerMi ? 0 : primAdet;
@@ -3122,7 +3126,9 @@ function primSatirMap(r) {
     prim_adet_net: dfbDisiSatir ? 0 : primAdetNet,
     sellout_adet: selloutAdet,
     magaza_kdv_haric_ciro: selloutCiro,
-    birim_ciro: r.birim_ciro != null ? Number(r.birim_ciro) : (selloutAdet > 0 ? +(selloutCiro / selloutAdet).toFixed(2) : null),
+    birim_ciro: selloutYok
+      ? null
+      : (r.birim_ciro != null ? Number(r.birim_ciro) : (selloutAdet > 0 ? +(selloutCiro / selloutAdet).toFixed(2) : null)),
     prime_esas_tutar: primeEsasGoster,
     prime_esas_tutar_net: primeEsasNetGoster,
     ...primler,
@@ -3497,6 +3503,8 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   const AAH = excelColHarf(COL_AA);
   const ABH = excelColHarf(COL_AB);
   const ACH = excelColHarf(COL_AC);
+  const FONT = { name: "Calibri", size: 11, color: { argb: "FF000000" } };
+  const FONT_BASLIK = { name: "Calibri", size: 11, bold: true, color: { argb: "FF000000" } };
 
   /** Satış primi + kontrol hücrelerine Excel formülü yazar. */
   function uygulaSatirFormulleri(row, s) {
@@ -3561,6 +3569,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
 
     for (const c of [COL_Q, COL_Z, COL_AA, COL_AB, COL_AC, COL_AD]) {
       const cell = row.getCell(c);
+      cell.font = FONT;
       cell.alignment = { horizontal: "right" };
       if (c !== COL_Q) cell.numFmt = PARA_NUM_FMT;
     }
@@ -3589,10 +3598,12 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true });
   const ws = wb.addWorksheet("Prim Çalışma", {
     views: [{ state: "frozen", ySplit: 1 }],
+    properties: { defaultFont: FONT },
   });
   ws.columns = PRIM_SATIR_KOLONLAR.map((k) => ({
     key: k.key,
     width: k.key === "ad_soyad" || k.key === "rapor_aciklama" || k.key === "urun_adi" ? 22 : 14,
+    style: { font: FONT },
   }));
 
   const baslik = ws.addRow(PRIM_SATIR_KOLONLAR.map((k) => k.ad));
@@ -3600,7 +3611,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   baslik.eachCell((cell, col) => {
     const renk = PRIM_SATIR_KOLONLAR[col - 1]?.renk || "acik";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: renkArgb[renk] || renkArgb.acik } };
-    cell.font = { bold: true, size: 10, color: { argb: "FF000000" } };
+    cell.font = FONT_BASLIK;
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     cell.border = {
       top: { style: "thin", color: { argb: "FF7F9DB9" } },
@@ -3640,24 +3651,15 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     });
     const row = ws.addRow(degerler);
     const dolgu = satirDolgu(s);
-    if (dolgu) {
-      row.eachCell({ includeEmpty: true }, (cell, col) => {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dolgu } };
-        const k = PRIM_SATIR_KOLONLAR[col - 1];
-        if (k && sayiKolon.has(k.key)) {
-          cell.alignment = { horizontal: "right" };
-          if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
-        }
-      });
-    } else {
-      row.eachCell({ includeEmpty: true }, (cell, col) => {
-        const k = PRIM_SATIR_KOLONLAR[col - 1];
-        if (k && sayiKolon.has(k.key)) {
-          cell.alignment = { horizontal: "right" };
-          if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
-        }
-      });
-    }
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.font = FONT;
+      if (dolgu) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dolgu } };
+      const k = PRIM_SATIR_KOLONLAR[col - 1];
+      if (k && sayiKolon.has(k.key)) {
+        cell.alignment = { horizontal: "right" };
+        if (paraKolon.has(k.key)) cell.numFmt = PARA_NUM_FMT;
+      }
+    });
     uygulaSatirFormulleri(row, s);
     row.commit();
   }
@@ -3671,6 +3673,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
     });
     const row = ws.addRow(degerler);
     row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.font = FONT;
       const k = PRIM_SATIR_KOLONLAR[col - 1];
       if (k && sayiKolon.has(k.key)) {
         cell.alignment = { horizontal: "right" };
@@ -3699,13 +3702,22 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
   const kalanBaslik = onceAy ? `${onceAy}${KALAN_EK[onceAy] || "'dan"}\nKalan` : "Kalan";
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Prim Çalışma");
+  const FONT = { name: "Calibri", size: 11, color: { argb: "FF000000" } };
+  const FONT_BASLIK = { name: "Calibri", size: 11, bold: true };
+  const FONT_TOPLAM = { name: "Calibri", size: 11, bold: true };
+  const ws = wb.addWorksheet("Prim Hesaplama");
+  ws.properties.defaultFont = FONT;
 
   // Üst filtre satırları (Excel'deki gibi)
-  ws.addRow(["Mağaza Toplam Satış", "(Tümü)"]);
-  ws.addRow(["Marka", "(Tümü)"]);
-  ws.addRow(["SATIŞ TÜRÜ", "(Tümü)"]);
-  ws.addRow(["Prime Esas Toplam Tutar", "(Birden Çok Öğe)"]);
+  for (const filtre of [
+    ["Mağaza Toplam Satış", "(Tümü)"],
+    ["Marka", "(Tümü)"],
+    ["SATIŞ TÜRÜ", "(Tümü)"],
+    ["Prime Esas Toplam Tutar", "(Birden Çok Öğe)"],
+  ]) {
+    const fr = ws.addRow(filtre);
+    fr.eachCell((cell) => { cell.font = FONT; });
+  }
   ws.addRow([]);
 
   const kolonlar = [
@@ -3760,7 +3772,7 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
     const cell = basRow.getCell(i);
     const renk = pivotRenkArgb[kolonlar[i - 1].renk] || pivotRenkArgb.siyah;
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: renk.bg } };
-    cell.font = { color: { argb: renk.fg }, bold: true, size: 10 };
+    cell.font = { ...FONT_BASLIK, color: { argb: renk.fg } };
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     cell.border = {
       top: { style: "thin", color: { argb: "FF000000" } },
@@ -3897,16 +3909,18 @@ app.get("/api/prim-raporu/:donemId/xlsx", wrap(async (req, res) => {
       // Toplam satır renkleri (boş hücreler dahil)
       if (s.tip === "uzman_toplam") {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFCC00" } };
-        cell.font = { bold: true, size: 10 };
+        cell.font = FONT_TOPLAM;
       } else if (s.tip === "genel_toplam") {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE699" } };
-        cell.font = { bold: true, size: 11 };
+        cell.font = FONT_TOPLAM;
         cell.border = {
           top: { style: "medium", color: { argb: "FF000000" } },
           bottom: { style: "medium", color: { argb: "FF000000" } },
           left: { style: "thin", color: { argb: "FF999999" } },
           right: { style: "thin", color: { argb: "FF999999" } },
         };
+      } else {
+        cell.font = FONT;
       }
     }
   }
