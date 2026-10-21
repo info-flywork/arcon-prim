@@ -13,11 +13,10 @@
 //
 // Eylül:
 //   Sensai, Sisley, La Prairie cilt (ve makyaj) kademeleri + o markada %1.
-//   Niche tablosu Eylül sıralarıyla (1 / 2 / 3 / 4 / 7 / 10), Hermes hariç, ciro yok.
-//   İzmir İstinyepark: Hermes uzmanı %1, DBS ilk 2 = 10.000.
-//   Suadiye: Dior uzmanı %1, DBS ilk 2 = 10.000, Byredo 30 / 20 / 10 bin.
-//   Aqua Florya: Givenchy uzmanı %1, DBS ilk 2 = 10.000.
-//   Tersane: Byredo + Penhaligon's + L'Artisan %1, DBS ilk 2 = 10.000 ve %1,
+//   Q kolonu yalnız cilt: LP / Sensai / Sisley / DBS sabitleri (atama o marka bölümündeyse).
+//   Niche (Pen/Byredo) parfüm sıralaması → Q yok (Birol Prim Hesaplama da vermiyor).
+//   İzmir / Suadiye / Aqua mağaza-uzman ciro %1 Q'ya yazılmaz.
+//   Tersane: CH makyaj/parfüm sabit + niche % (ayrı); DBS cilt ayrı.
 //   CH makyaj ilk 1 = 20.000 / ilk 2 = 10.000, CH parfüm ilk 5 = 20.000 / ilk 10 = 10.000.
 const { normalizeName } = require("../util");
 
@@ -45,6 +44,28 @@ const TERSANE_AGUSTOS = [
   { max: 7, tutar: 10000 },
 ];
 const SUADIYE_BYREDO = TERSANE_AGUSTOS;
+
+/** Eylül / ekran varsayılanları — prim_kural sabit_tl ile override edilebilir. */
+const EYLUL_LP_CILT = [
+  { max: 1, tutar: 60000 },
+  { max: 2, tutar: 30000 },
+];
+const EYLUL_SENSAI_CILT = [
+  { max: 3, tutar: 40000 },
+  { max: 5, tutar: 20000 },
+];
+const EYLUL_SENSAI_MAK = [
+  { max: 8, tutar: 20000 },
+  { max: 10, tutar: 10000 },
+];
+const EYLUL_SISLEY_CILT = [
+  { max: 4, tutar: 40000 },
+  { max: 6, tutar: 20000 },
+];
+const EYLUL_SISLEY_MAK = [
+  { max: 8, tutar: 20000 },
+  { max: 10, tutar: 10000 },
+];
 
 function markaAnahtar(marka) {
   const n = normalizeName(marka);
@@ -151,12 +172,20 @@ function yuzdeTutar(esas, oran) {
 }
 
 /**
+ * @param {object} [opts.kademe] prim_kural'dan gelen sabit TL kademeleri
+ *   { LP:{cilt:[{max,tutar}]}, SENSAI:{cilt,makyaj}, SISLEY:{cilt,makyaj} }
  * @returns {Map<string, {tutar:number, detay:object[]}>} anahtar uzmanId|magazaId
  */
-function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd }) {
+function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, atamaByUzmanMagaza }) {
   const set = String(kuralSeti || "").toLocaleLowerCase("tr-TR");
   const sonuc = new Map();
   if (set !== "agustos" && set !== "eylul") return sonuc;
+  const kad = kademe || {};
+  const lpCilt = (kad.LP && kad.LP.cilt && kad.LP.cilt.length) ? kad.LP.cilt : EYLUL_LP_CILT;
+  const sensaiCilt = (kad.SENSAI && kad.SENSAI.cilt && kad.SENSAI.cilt.length) ? kad.SENSAI.cilt : EYLUL_SENSAI_CILT;
+  const sensaiMak = (kad.SENSAI && kad.SENSAI.makyaj && kad.SENSAI.makyaj.length) ? kad.SENSAI.makyaj : EYLUL_SENSAI_MAK;
+  const sisleyCilt = (kad.SISLEY && kad.SISLEY.cilt && kad.SISLEY.cilt.length) ? kad.SISLEY.cilt : EYLUL_SISLEY_CILT;
+  const sisleyMak = (kad.SISLEY && kad.SISLEY.makyaj && kad.SISLEY.makyaj.length) ? kad.SISLEY.makyaj : EYLUL_SISLEY_MAK;
 
   const index = siraIndex(siralar);
   const adOf = (id) => {
@@ -166,6 +195,22 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd }) {
     }
     return magazaAd[id] || "";
   };
+
+  /** Uzman×mağaza atama bölümünde marka var mı? (Sisley atamasına Sensai sabit yazma) */
+  function bolumdeMarkaVar(uid, mid, markaNeedle) {
+    if (!atamaByUzmanMagaza || typeof atamaByUzmanMagaza.get !== "function") return true;
+    const list = atamaByUzmanMagaza.get(`${uid}|${mid}`)
+      || atamaByUzmanMagaza.get(`${String(uid)}|${String(mid)}`)
+      || [];
+    if (!list.length) return false;
+    const needle = String(markaNeedle || "").toLocaleUpperCase("tr-TR");
+    return list.some((a) => {
+      const adi = String(a.bolum_adi || "").toLocaleUpperCase("tr-TR");
+      const grup = String(a.grup_adi || "").toLocaleUpperCase("tr-TR");
+      return adi.includes(needle) || (needle === "SENSAI" && adi.includes("SENSAİ"))
+        || (needle === "LP" && (adi.includes("PRAIRIE") || adi.includes("LP")));
+    });
+  }
 
   // uzman|magaza|markaKey -> esas
   const hucre = new Map();
@@ -262,34 +307,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd }) {
     }
 
     if (set === "eylul") {
-      if (tip === "SUADIYE" && byredo > 0) {
-        const sira = enIyiSira(index, mid, "PARFUM", byredoMu, hermesMi);
-        ekle(uid, mid, kademeTutar(sira, SUADIYE_BYREDO), {
-          kural: "Suadiye Byredo (Eylül)",
-          kriter: "beymen_cilt",
-          sira,
-        });
-      }
-      const genelPen = pen > 0 || lartisan > 0 || dries > 0;
-      const genelByredo = byredo > 0 && tip !== "SUADIYE";
-      if (genelByredo || genelPen) {
-        const sira = enIyiSira(
-          index,
-          mid,
-          "PARFUM",
-          (m) => (genelByredo && byredoMu(m)) || (pen > 0 && penhaligonMu(m)) || (lartisan > 0 && artisanMu(m)) || (dries > 0 && driesMu(m)),
-          hermesMi
-        );
-        const tablo = (genelByredo && genelPen) ? NICHE_EYLUL_IKI : NICHE_EYLUL_TEK;
-        ekle(uid, mid, kademeTutar(sira, tablo), {
-          kural: (genelByredo && genelPen)
-            ? "Penhaligon's & ByRedo iki marka (Eylül)"
-            : "Penhaligon's & ByRedo tek uzman (Eylül)",
-          kriter: "beymen_cilt",
-          sira,
-          not: "Hermes hariç. Ciro primi yok.",
-        });
-      }
+      // Niche (Pen/Byredo) parfüm sıralama sabiti → Q yok (yalnız cilt; Birol da vermiyor).
 
       if (tip === "TERSANE") {
         const nicheEsas = byredo + pen + lartisan + dries;
@@ -309,69 +327,23 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd }) {
         }
       }
 
-      if (tip === "IZMIR_ISTINYE") {
-        ekle(uid, mid, yuzdeTutar(esas(uid, mid, "HERMES"), 1), {
-          kural: "İzmir İstinyepark Hermes uzmanı %1 (Eylül)",
-          kriter: "beymen_cilt",
-          oran: 1,
-          esas_baz: tl(esas(uid, mid, "HERMES")),
-        });
-      }
-      if (tip === "SUADIYE") {
-        ekle(uid, mid, yuzdeTutar(esas(uid, mid, "DIOR"), 1), {
-          kural: "Suadiye Dior uzmanı %1 (Eylül)",
-          kriter: "beymen_cilt",
-          oran: 1,
-          esas_baz: tl(esas(uid, mid, "DIOR")),
-        });
-      }
-      if (tip === "AQUA") {
-        ekle(uid, mid, yuzdeTutar(esas(uid, mid, "GIVENCHY"), 1), {
-          kural: "Aqua Florya Givenchy uzmanı %1 (Eylül)",
-          kriter: "beymen_cilt",
-          oran: 1,
-          esas_baz: tl(esas(uid, mid, "GIVENCHY")),
-        });
-      }
+      // İzmir Hermes / Suadiye Dior / Aqua Givenchy uzman ciro %1 → Q yok
+      // (çift ödeme; Birol Prim Hesaplama'da da yok).
 
-      const dbsMagaza = tip === "IZMIR_ISTINYE" || tip === "SUADIYE" || tip === "AQUA" || tip === "TERSANE";
-      if (dbs > 0 && dbsMagaza) {
+      // DBS: sheet genel kademe (LP yoksa eşik sıkı; 2/3 mağaza ölçek).
+      // Özel mağazalardaki eski "ilk 2 = 10.000" yerine genel tablo (Birol ile hizalı).
+      if (dbs > 0) {
+        const lpVar = (index.get(`${mid}|CILT`) || []).some((x) => lpMi(x.marka));
         const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA"), null);
-        if (sira != null && sira <= 2) {
-          ekle(uid, mid, 10000, {
-            kural: "DBS ilk 2 = 10.000 (Eylül)",
-            kriter: "beymen_cilt",
-            sira,
-          });
-        }
-        if (tip === "TERSANE") {
-          ekle(uid, mid, yuzdeTutar(dbs, 1), {
-            kural: "Tersane DBS ciro %1 (Eylül)",
-            kriter: "beymen_cilt",
-            oran: 1,
-            esas_baz: tl(dbs),
-          });
-        }
+        const magSay = dbsMagazaSayisi.get(String(uid))?.size || dbsMagazaSayisi.get(uid)?.size || 1;
+        const tutar = dbsAgustosTutar(sira, magSay, lpVar);
+        dbsAday.push({ uid, mid, tutar, sira, magSay, lpVar });
+        // DBS ciro %1 Q'ya eklenmez (Birol Q = sıralama sabiti); satış %1 ayrı kolon.
       }
 
-      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "LP"), "CILT", (m) => lpMi(m), [
-        { max: 1, tutar: 60000 },
-        { max: 2, tutar: 30000 },
-      ], null, "La Prairie cilt (Eylül)");
-      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SENSAI"), "CILT", (m) => m.includes("SENSAI"), [
-        { max: 3, tutar: 40000 },
-        { max: 5, tutar: 20000 },
-      ], [
-        { max: 8, tutar: 20000 },
-        { max: 10, tutar: 10000 },
-      ], "Sensai (Eylül)");
-      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SISLEY"), "CILT", (m) => m.includes("SISLEY"), [
-        { max: 4, tutar: 40000 },
-        { max: 6, tutar: 20000 },
-      ], [
-        { max: 8, tutar: 20000 },
-        { max: 10, tutar: 10000 },
-      ], "Sisley (Eylül)");
+      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "LP"), "CILT", (m) => lpMi(m), lpCilt, null, "La Prairie cilt (Eylül)");
+      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SENSAI"), "CILT", (m) => m.includes("SENSAI"), sensaiCilt, sensaiMak, "Sensai (Eylül)");
+      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SISLEY"), "CILT", (m) => m.includes("SISLEY"), sisleyCilt, sisleyMak, "Sisley (Eylül)");
     }
   }
 
@@ -424,12 +396,8 @@ function eylulMarkaBlok(ekle, index, uid, mid, markaEsas, cesit, kabul, ciltKade
       sira: mak,
     });
   }
-  ekle(uid, mid, yuzdeTutar(markaEsas, 1), {
-    kural: `${ad} ciro %1`,
-    kriter: "beymen_cilt",
-    oran: 1,
-    esas_baz: tl(markaEsas),
-  });
+  // Ciro %1 Q'ya yazılmaz — Birol Q'da yalnızca sıralama sabit TL;
+  // satış %1 zaten bölüm satis_basi / F kolonundan gelir.
 }
 
 module.exports = { beymenCiltPrimleri, markaAnahtar, magazaTip, agustosBeymenNicheCiroPrimVar };

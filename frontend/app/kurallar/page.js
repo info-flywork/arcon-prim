@@ -5,6 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 const oranYaz = (deger) =>
   Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 
+const tutarYaz = (deger) =>
+  Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
+
+function kuralOdulYaz(kural) {
+  if (String(kural.prim_tip || "yuzde").toLowerCase() === "sabit_tl") {
+    return `${tutarYaz(kural.prim_tutar)} ₺`;
+  }
+  return `%${oranYaz(kural.prim_oran)}`;
+}
+
 function AramaIkon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -118,7 +128,8 @@ export default function Kurallar() {
   const [arama, setArama] = useState("");
   const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenlenen, setDuzenlenen] = useState(null);
-  const [yeniOran, setYeniOran] = useState("");
+  const [primTip, setPrimTip] = useState("yuzde");
+  const [yeniDeger, setYeniDeger] = useState("");
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
   async function yukle() {
@@ -185,31 +196,68 @@ export default function Kurallar() {
   function duzenlemeAc(kural) {
     setMesaj(null);
     setDuzenlenen(kural);
-    setYeniOran(String(kural.prim_oran ?? "").replace(".", ","));
+    const tip = String(kural.prim_tip || "yuzde").toLowerCase() === "sabit_tl" ? "sabit_tl" : "yuzde";
+    setPrimTip(tip);
+    if (tip === "sabit_tl") {
+      setYeniDeger(String(kural.prim_tutar ?? "").replace(".", ","));
+    } else {
+      setYeniDeger(String(kural.prim_oran ?? "").replace(".", ","));
+    }
+  }
+
+  function tipDegistir(yeniTip) {
+    setPrimTip(yeniTip);
+    if (!duzenlenen) return;
+    if (yeniTip === "sabit_tl") {
+      setYeniDeger(String(duzenlenen.prim_tutar ?? "").replace(".", ","));
+    } else {
+      setYeniDeger(String(duzenlenen.prim_oran ?? "").replace(".", ","));
+    }
   }
 
   async function oranKaydet(event) {
     event.preventDefault();
     if (!duzenlenen) return;
-    const oran = Number(String(yeniOran).replace(",", "."));
-    if (!Number.isFinite(oran) || oran < 0 || oran > 10) {
-      setMesaj({ tip: "hata", metin: "Oran 0 ile 10 arasında olmalı." });
-      return;
+    const ham = String(yeniDeger).trim();
+    let sayi;
+    if (primTip === "sabit_tl") {
+      // "30.000" / "30000" / "30.000,50"
+      const s = ham.includes(",")
+        ? ham.replace(/\./g, "").replace(",", ".")
+        : /^\d{1,3}(\.\d{3})+$/.test(ham)
+          ? ham.replace(/\./g, "")
+          : ham;
+      sayi = Number(s);
+      if (!Number.isFinite(sayi) || sayi < 0 || sayi > 1000000) {
+        setMesaj({ tip: "hata", metin: "Sabit tutar 0 ile 1.000.000 TL arasında olmalı." });
+        return;
+      }
+    } else {
+      sayi = Number(ham.replace(",", "."));
+      if (!Number.isFinite(sayi) || sayi < 0 || sayi > 10) {
+        setMesaj({ tip: "hata", metin: "Oran 0 ile 10 arasında olmalı." });
+        return;
+      }
     }
 
     setKaydediliyor(true);
     try {
+      const govde = primTip === "sabit_tl"
+        ? { prim_tip: "sabit_tl", prim_tutar: sayi, prim_oran: 0 }
+        : { prim_tip: "yuzde", prim_oran: sayi, prim_tutar: 0 };
       const cevap = await fetch(`/api/kural/${duzenlenen.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prim_oran: oran }),
+        body: JSON.stringify(govde),
       });
       const veri = await cevap.json();
-      if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Oran güncellenemedi");
+      if (!cevap.ok || veri.hata) throw new Error(veri.hata || "Kural güncellenemedi");
       setDuzenlenen(null);
       setMesaj({
         tip: "ok",
-        metin: `${duzenlenen.kriter_adi} oranı %${oranYaz(oran)} olarak güncellendi.`,
+        metin: primTip === "sabit_tl"
+          ? `${duzenlenen.kriter_adi} sabit ${tutarYaz(sayi)} ₺ olarak güncellendi. Yeniden hesaplayınca prim etkilenir.`
+          : `${duzenlenen.kriter_adi} oranı %${oranYaz(sayi)} olarak güncellendi. Yeniden hesaplayınca prim etkilenir.`,
       });
       await yukle();
     } catch (hata) {
@@ -230,7 +278,7 @@ export default function Kurallar() {
         </div>
         <div>
           <h2>Prim Kuralları</h2>
-          <p>Onaylı kural setini inceleyin, oranları güvenle güncelleyin.</p>
+          <p>Oran (%) veya sabit TL girin; değişiklik hesaplamaya yansır.</p>
         </div>
       </section>
 
@@ -279,7 +327,7 @@ export default function Kurallar() {
                     <tr>
                       <th>Kural</th>
                       <th>Kriter tipi</th>
-                      <th className="sag">Oran</th>
+                      <th className="sag">Ödül</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -298,10 +346,10 @@ export default function Kurallar() {
                           <button
                             type="button"
                             className="kural-oran"
-                            title="Oranı düzenle"
+                            title="Ödülü düzenle"
                             onClick={() => duzenlemeAc(kural)}
                           >
-                            <strong>%{oranYaz(kural.prim_oran)}</strong>
+                            <strong>{kuralOdulYaz(kural)}</strong>
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                               <path d="m14 5 5 5M4 20l3.5-.7L19 7.8a2.1 2.1 0 0 0-3-3L4.7 16.4 4 20z" />
                             </svg>
@@ -320,28 +368,54 @@ export default function Kurallar() {
       {duzenlenen && (
         <div className="kural-modal-arka" onClick={() => !kaydediliyor && setDuzenlenen(null)}>
           <form className="kural-modal" onSubmit={oranKaydet} onClick={(event) => event.stopPropagation()}>
-            <div className="kural-modal-ikon">%</div>
-            <span className="kural-modal-etiket">Prim oranını düzenle</span>
+            <div className="kural-modal-ikon">{primTip === "sabit_tl" ? "₺" : "%"}</div>
+            <span className="kural-modal-etiket">Prim ödülünü düzenle</span>
             <h3>{duzenlenen.kriter_adi}</h3>
             <p>{duzenlenen.kriter_tipi} · {duzenlenen.bolum_adi}</p>
-            <label htmlFor="kural-oran-input">Yeni oran</label>
+
+            <div className="kural-tip-secim" role="group" aria-label="Ödül tipi">
+              <button
+                type="button"
+                className={primTip === "yuzde" ? "aktif" : undefined}
+                disabled={kaydediliyor}
+                onClick={() => tipDegistir("yuzde")}
+              >
+                Yüzde (%)
+              </button>
+              <button
+                type="button"
+                className={primTip === "sabit_tl" ? "aktif" : undefined}
+                disabled={kaydediliyor}
+                onClick={() => tipDegistir("sabit_tl")}
+              >
+                Sabit TL
+              </button>
+            </div>
+
+            <label htmlFor="kural-oran-input">
+              {primTip === "sabit_tl" ? "Sabit tutar (TL)" : "Yeni oran"}
+            </label>
             <div className="kural-modal-input">
               <input
                 id="kural-oran-input"
                 autoFocus
                 inputMode="decimal"
-                value={yeniOran}
-                onChange={(event) => setYeniOran(event.target.value)}
+                value={yeniDeger}
+                onChange={(event) => setYeniDeger(event.target.value)}
               />
-              <span>%</span>
+              <span>{primTip === "sabit_tl" ? "₺" : "%"}</span>
             </div>
-            <small>0 ile 10 arasında bir oran girin. Değişiklik geçmişe kaydedilir.</small>
+            <small>
+              {primTip === "sabit_tl"
+                ? "Koşul tutunca bu tutar doğrudan eklenir (örn. 30000). Değişiklik geçmişe kaydedilir; prim için dönemi yeniden hesaplayın."
+                : "0 ile 10 arasında bir oran girin. Değişiklik geçmişe kaydedilir; prim için dönemi yeniden hesaplayın."}
+            </small>
             <div className="kural-modal-butonlar">
               <button type="button" className="btn ikincil" disabled={kaydediliyor} onClick={() => setDuzenlenen(null)}>
                 Vazgeç
               </button>
               <button type="submit" className="btn" disabled={kaydediliyor}>
-                {kaydediliyor ? "Kaydediliyor…" : "Oranı kaydet"}
+                {kaydediliyor ? "Kaydediliyor…" : "Kaydet"}
               </button>
             </div>
           </form>

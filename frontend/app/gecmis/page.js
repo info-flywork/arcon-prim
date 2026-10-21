@@ -60,8 +60,19 @@ function ozetle(kayit) {
     return `Yeni uzman: ${d.ad_soyad}`;
   }
   if (tablo === "prim_kural" && islem === "guncelleme") {
+    const ad = d.eski?.kriter_adi || d.yeni?.kriter_adi || "";
+    const yeniTip = d.yeni?.prim_tip;
+    if (yeniTip === "sabit_tl" || d.eski?.prim_tip === "sabit_tl") {
+      const eski = d.eski?.prim_tip === "sabit_tl"
+        ? `${d.eski.prim_tutar} ₺`
+        : `%${d.eski?.prim_oran ?? "?"}`;
+      const yeni = (d.yeni?.prim_tip || yeniTip) === "sabit_tl"
+        ? `${d.yeni?.prim_tutar ?? "?"} ₺`
+        : `%${d.yeni?.prim_oran ?? "?"}`;
+      return `Kural ödülü: ${eski} → ${yeni}${ad ? ` (${ad})` : ""}`;
+    }
     if (d.eski?.prim_oran != null && d.yeni?.prim_oran != null) {
-      return `Kural oranı: %${d.eski.prim_oran} → %${d.yeni.prim_oran}${d.eski.kriter_adi ? " (" + d.eski.kriter_adi + ")" : ""}`;
+      return `Kural oranı: %${d.eski.prim_oran} → %${d.yeni.prim_oran}${ad ? ` (${ad})` : ""}`;
     }
     return "Kural güncellendi";
   }

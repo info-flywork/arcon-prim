@@ -18,6 +18,7 @@ const {
   resolveProductWithBridge,
 } = require("./productService");
 const { relinkDonemBeyan } = require("./beyanRelink");
+const { parfumUzmanGrubuMu } = require("./grupDisiKural");
 
 // Bir sekmede beklenen başlıkların geçtiği satırı bulur (ilk 50 satır taranır).
 // Gerçek dosyalarda başlık her zaman 1. satırda değildir: boş satırlar,
@@ -283,12 +284,21 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
     || (grupNorm.includes("PARFUM") && grupNorm.includes("TUM"));
   if (isTumParfum) {
     const tip = uzmanTipi || "TEK_UZMAN";
+    // 2+: Parfüm Tüm → PUIG sıralama tablosu (Birol Prim Hesaplama); HERMES-DG'ye düşmesin.
+    // TEK: PUIG-HERMES-DG-GIV birleşik kabuk.
     const puanli = candidates
       .filter((b) => b.marka_grubu_key && /PUIG|HERMES|DG|GIV/i.test(String(b.marka_grubu_key)))
-      .map((b) => ({
-        b,
-        sc: (b.uzman_tipi === tip ? 2 : 0) + (/PUIG.*HERMES|HERMES.*DG/i.test(String(b.marka_grubu_key)) ? 2 : 1),
-      }))
+      .map((b) => {
+        const key = String(b.marka_grubu_key || "");
+        let sc = b.uzman_tipi === tip ? 2 : 0;
+        if (tip === "COK_UZMAN") {
+          if (/^puig/i.test(key) || (key.includes("puig") && !key.includes("hermes"))) sc += 4;
+          else if (/hermes|dg/i.test(key)) sc += 1;
+        } else {
+          sc += /PUIG.*HERMES|HERMES.*DG/i.test(key) ? 2 : 1;
+        }
+        return { b, sc };
+      })
       .sort((a, c) => c.sc - a.sc);
     if (puanli[0]) return puanli[0].b;
     const tek = candidates.find((b) => b.uzman_tipi === tip && b.marka_grubu_key)
@@ -316,6 +326,37 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
     if (t.includes("SENSAI")) aliases.add("SENSAI");
   }
 
+  // Kısa alias (GIV/DG/LP): "GIVENCHY" içinde GIV sayılmasın (çift puan / yanlış kabuk)
+  function textHasAlias(text, a) {
+    if (!a || !text) return false;
+    if (a.length <= 3) return new RegExp(`(^|[^A-Z0-9])${a}([^A-Z0-9]|$)`).test(text);
+    return text.includes(a);
+  }
+
+  // Sensai / Sisley / LP / Dior — tek marka bölümü, "Givenchy uzmanı" / Puig kabuğundan önce
+  // (ör. "Sensai + Givenchy" → SENSAİ SEPHORA; Birol Q = Sensai sıralama %)
+  if (!isTumParfum) {
+    const exclusiveAliases = ["SENSAI", "SISLEY", "DIOR", "LP"];
+    for (const ex of exclusiveAliases) {
+      if (![...aliases].some((a) => a === ex || a.includes(ex) || ex.includes(a))) continue;
+      const hit = candidates.find((b) => {
+        const adi = normalizeName(b.marka_grubu_adi || b.bolum_adi || "");
+        const key = normalizeName(b.marka_grubu_key || "");
+        const marksArr = Array.isArray(b.markalar)
+          ? b.markalar.map((m) => normalizeName(m))
+          : [];
+        // Çoklu parfüm kabuğu / Givenchy+parfüm unvanı değil
+        if (/PUIG/.test(adi) || (/GIVENCHY/.test(adi) && /PARFUM|UZMANI/.test(adi))) return false;
+        if (marksArr.length >= 3) return false;
+        if (marksArr.length === 1 && (marksArr[0] === ex || marksArr[0].includes(ex))) return true;
+        if (adi.includes(ex) && !adi.includes("GIVENCHY") && !/PUIG|HERMES|PARFUM TUM/.test(adi)) return true;
+        if (key.includes(ex) && marksArr.length <= 1) return true;
+        return false;
+      });
+      if (hit) return hit;
+    }
+  }
+
   // Marka grubu net olan bölümler (DIOR, SISLEY…) boş Puig kabuğuna (markalar=null) tercih edilir
   let best = null;
   for (const b of candidates) {
@@ -328,8 +369,8 @@ function eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal }) {
     if (grupNorm && key && (key.includes(grupNorm) || grupNorm.includes(key))) sc += 4;
     for (const a of aliases) {
       if (!a) continue;
-      if (adi.includes(a) || key.includes(a) || marks.includes(a)) sc += 3;
-      if (a === "DG" && (adi.includes("DG") || key.includes("DG") || marks.includes("DG"))) sc += 4;
+      if (textHasAlias(adi, a) || textHasAlias(key, a) || textHasAlias(marks, a)) sc += 3;
+      if (a === "DG" && (textHasAlias(adi, "DG") || textHasAlias(key, "DG") || textHasAlias(marks, "DG"))) sc += 4;
     }
     if (uzmanTipi && b.uzman_tipi === uzmanTipi) sc += 1;
     // Marka tanımsız kabuk bölümler (yalnız bonus vb.) zayıf kalsın
@@ -383,11 +424,15 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
     const magazaBayiMap = new Map(mevcutMagazalar.map((m) => [String(m.prim_magaza), m.bayi]));
     const uzmanMap = new Map(mevcutUzmanlar.map((u) => [u.normal_ad, u.id]));
 
-    // Mağaza başına uzman sayısını önce hesapla (senaryo seçimi için)
+    // Mağaza başına PARFÜM uzman sayısı (Dior/Sensai/LP/Sisley sayılmaz — Birol TEK/ÇOK)
     const storeCount = new Map();
+    const storeParfumUzman = new Map(); // storeKey -> Set(normalAd)
     for (const s of acikSatirlar) {
       const key = normalizeStore(s.magaza);
       storeCount.set(key, (storeCount.get(key) || 0) + 1);
+      if (!parfumUzmanGrubuMu(s.grup)) continue;
+      if (!storeParfumUzman.has(key)) storeParfumUzman.set(key, new Set());
+      storeParfumUzman.get(key).add(normalizeName(s.uzmanAd));
     }
 
     // 1) Satırları bellekte çöz; mağaza/uzman upsert listelerini topla
@@ -423,7 +468,10 @@ async function importUzmanMagaza(buffer, donemId, dosyaAdi) {
       } else if (kanal === "BEYMEN") {
         altKanal = "BEYMEN";
       }
-      const uzmanSayisi = storeCount.get(normalizeStore(primMagaza)) || 1;
+      const storeKey = normalizeStore(primMagaza);
+      const parfumN = (storeParfumUzman.get(storeKey) || new Set()).size;
+      // Parfüm grubu yoksa (yalnız Dior/cilt) eski toplam sayıya düş
+      const uzmanSayisi = parfumN > 0 ? parfumN : (storeCount.get(storeKey) || 1);
       const uzmanTipi = uzmanSayisi >= 2 ? "COK_UZMAN" : "TEK_UZMAN";
       const bolum = eslestirBolum(bolumler, { kanal, grup, uzmanTipi, altKanal });
       if (!bolum) { err++; errors.push(`Bölüm bulunamadı: ${primMagaza} / ${grup}`); continue; }
