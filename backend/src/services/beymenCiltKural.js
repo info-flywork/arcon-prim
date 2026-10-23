@@ -14,8 +14,12 @@
 // Eylül:
 //   Sensai, Sisley, La Prairie cilt (ve makyaj) kademeleri + o markada %1.
 //   Q kolonu yalnız cilt: LP / Sensai / Sisley / DBS sabitleri (atama o marka bölümündeyse).
-//   Niche (Pen/Byredo) parfüm sıralaması → Q yok (Birol Prim Hesaplama da vermiyor).
-//   İzmir / Suadiye / Aqua mağaza-uzman ciro %1 Q'ya yazılmaz.
+//   İzmir İstinyepark, Suadiye, Aqua: DBS ilk 2 = 10.000. Genel DBS kademesi yok. Ciro %1 yok.
+//   Suadiye Byredo: birincilik 30.000 / ilk 4 = 20.000 / ilk 7 = 10.000. Ciro %1 yok.
+//   Penhaligon's ve Byredo mağaza (parfüm) sıralaması, Hermes hariç.
+//   Tek uzman 100/90/80/70/50/25 bin. İki markada yarı. Ciro %1 yok.
+//   Suadiye ve Tersane bu merdivene girmez. Onların kendi kademesi vardır.
+//   Diğer mağazalarda DBS genel kademe. Bu üç mağaza o sayıma girmez.
 //   Tersane: CH makyaj/parfüm sabit + niche % (ayrı); DBS cilt ayrı.
 //   CH makyaj ilk 1 = 20.000 / ilk 2 = 10.000, CH parfüm ilk 5 = 20.000 / ilk 10 = 10.000.
 const { normalizeName } = require("../util");
@@ -143,6 +147,11 @@ function enIyiSira(index, magazaId, cesit, kabul, exclude) {
 function hermesMi(marka) {
   return marka.includes("HERMES");
 }
+
+/** Eylül sayfası: bu üç mağazada DBS genel kademe değil, ilk 2 = 10.000. */
+function dbsIlkIkiOnBinMi(tip) {
+  return tip === "IZMIR_ISTINYE" || tip === "SUADIYE" || tip === "AQUA";
+}
 function lpMi(marka) {
   return marka.includes("PRAIRIE") || marka === "LP";
 }
@@ -247,6 +256,18 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
     dbsMagazaSayisi.get(uzmanId).add(magazaId);
   }
 
+  function genelDbsMagazaSayisi(uid) {
+    const set = dbsMagazaSayisi.get(String(uid)) || dbsMagazaSayisi.get(uid);
+    if (!set) return 1;
+    let n = 0;
+    for (const magazaId of set) {
+      const tip = magazaTip(adOf(Number(magazaId) || magazaId));
+      if (dbsIlkIkiOnBinMi(tip)) continue;
+      n += 1;
+    }
+    return n || 1;
+  }
+
   const dbsAday = [];
   const çiftler = new Set();
   for (const hk of hucre.keys()) {
@@ -307,7 +328,28 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
     }
 
     if (set === "eylul") {
-      // Niche (Pen/Byredo) parfüm sıralama sabiti → Q yok (yalnız cilt; Birol da vermiyor).
+      if (tip !== "SUADIYE" && tip !== "TERSANE" && (byredo > 0 || pen > 0)) {
+        const sira = enIyiSira(index, mid, "PARFUM", (m) => byredoMu(m) || penhaligonMu(m), hermesMi);
+        const iki = byredo > 0 && pen > 0;
+        ekle(uid, mid, kademeTutar(sira, iki ? NICHE_EYLUL_IKI : NICHE_EYLUL_TEK), {
+          kural: iki
+            ? "Penhaligon's ve Byredo iki marka (Eylül)"
+            : "Penhaligon's ve Byredo tek uzman (Eylül)",
+          kriter: "beymen_cilt",
+          sira,
+          not: "Mağaza parfüm sıralaması. Hermes hariç. Ciro %1 yok.",
+        });
+      }
+
+      if (tip === "SUADIYE" && byredo > 0) {
+        const sira = enIyiSira(index, mid, "PARFUM", byredoMu, null);
+        ekle(uid, mid, kademeTutar(sira, SUADIYE_BYREDO), {
+          kural: "Suadiye Byredo (Eylül)",
+          kriter: "beymen_cilt",
+          sira,
+          not: "Birincilik 30.000 / ilk 4 = 20.000 / ilk 7 = 10.000. Ciro %1 yok.",
+        });
+      }
 
       if (tip === "TERSANE") {
         const nicheEsas = byredo + pen + lartisan + dries;
@@ -327,18 +369,22 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
         }
       }
 
-      // İzmir Hermes / Suadiye Dior / Aqua Givenchy uzman ciro %1 → Q yok
-      // (çift ödeme; Birol Prim Hesaplama'da da yok).
-
-      // DBS: sheet genel kademe (LP yoksa eşik sıkı; 2/3 mağaza ölçek).
-      // Özel mağazalardaki eski "ilk 2 = 10.000" yerine genel tablo (Birol ile hizalı).
+      // İzmir, Suadiye, Aqua ciro %1 yok. DBS bu üçünde ilk 2 = 10.000.
       if (dbs > 0) {
-        const lpVar = (index.get(`${mid}|CILT`) || []).some((x) => lpMi(x.marka));
         const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA"), null);
-        const magSay = dbsMagazaSayisi.get(String(uid))?.size || dbsMagazaSayisi.get(uid)?.size || 1;
-        const tutar = dbsAgustosTutar(sira, magSay, lpVar);
-        dbsAday.push({ uid, mid, tutar, sira, magSay, lpVar });
-        // DBS ciro %1 Q'ya eklenmez (Birol Q = sıralama sabiti); satış %1 ayrı kolon.
+        if (dbsIlkIkiOnBinMi(tip)) {
+          dbsAday.push({
+            uid, mid, sira, magSay: 1, lpVar: false,
+            tutar: sira != null && sira <= 2 ? 10000 : 0,
+            kural: "DBS cilt (ilk 2 = 10.000)",
+            not: "İzmir İstinyepark, Suadiye, Aqua. Genel kademe yok.",
+          });
+        } else {
+          const lpVar = (index.get(`${mid}|CILT`) || []).some((x) => lpMi(x.marka));
+          const magSay = genelDbsMagazaSayisi(uid);
+          const tutar = dbsAgustosTutar(sira, magSay, lpVar);
+          dbsAday.push({ uid, mid, tutar, sira, magSay, lpVar });
+        }
       }
 
       eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "LP"), "CILT", (m) => lpMi(m), lpCilt, null, "La Prairie cilt (Eylül)");
@@ -355,10 +401,10 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
   for (const aday of enIyiDbs.values()) {
     const n = Math.min(aday.magSay || 1, 3);
     ekle(aday.uid, aday.mid, aday.tutar, {
-      kural: `DBS cilt (Ağustos, ${n} mağaza)`,
+      kural: aday.kural || `DBS cilt (Ağustos, ${n} mağaza)`,
       kriter: "beymen_cilt",
       sira: aday.sira,
-      not: aday.lpVar ? "La Prairie sıralamada var" : "La Prairie yok, eşik bir sıra sıkı",
+      not: aday.not || (aday.lpVar ? "La Prairie sıralamada var" : "La Prairie yok, eşik bir sıra sıkı"),
     });
   }
 

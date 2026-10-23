@@ -950,6 +950,19 @@ async function hesapla(donemId, options = {}) {
       return { tuttu: kendiEsas >= hedefToplam, kendiEsas, gerceklesen, hedefToplam };
     }
 
+    function sevilParfumMarkaSay(magazaId, maxSira) {
+      const prefix = `${magazaId}|PARFUM|`;
+      let n = 0;
+      for (const [key, sira] of siraMap) {
+        if (!key.startsWith(prefix) || !(sira <= maxSira)) continue;
+        const marka = key.slice(prefix.length);
+        if (marka.includes("DIOR")) continue;
+        if (marka.includes("STURM") || (marka.includes("BARBARA") && marka.includes("DR"))) continue;
+        n += 1;
+      }
+      return n;
+    }
+
     function siralamaMarkaTutuyorMu(magazaId, markalarJson, hedefler) {
       // Satırdaki eşiklerin hepsi birlikte tutulmalı (VE). Biri tutmazsa satır tutmaz.
       const list = hedefler || [];
@@ -1307,7 +1320,8 @@ async function hesapla(donemId, options = {}) {
             odulUygula(k, sonuc, (oran) => { siralamaOran += oran; });
             continue;
           case "kumul_siralama":
-            sonuc = kategoriSiralamaTutuyorMu(a.magaza_id, a.markalar, "GENEL", hedefler[0]?.hedef_sira || 1);
+            // Bölümün kendi markası (DG kümül = Dolce). Prim grubundaki kardeş marka sayılmaz.
+            sonuc = kategoriSiralamaTutuyorMu(a.magaza_id, a.hamMarkalar || a.markalar, "GENEL", hedefler[0]?.hedef_sira || 1);
             odulUygula(k, sonuc, (oran) => { siralamaOran += oran; });
             continue;
           case "ozel": {
@@ -1390,37 +1404,35 @@ async function hesapla(donemId, options = {}) {
         diorPush(diorCiltSira > 0 && diorCiltSira <= 3, "cilt_siralama", 0.33, "DIOR Cilt ilk 3 (Sevil)", diorCiltSira);
       }
 
-      // Sevil parfüm sıralaması yalnız parfüm grubuna (Parfüm Tüm, Puig, Hermes/DG veya parfümle karma).
-      // La Prairie / Sisley / Sensai kendi cilt-makyaj primini alır; parfüm sayfasına yazılmaz.
+      // Sevil parfüm R/S/T: tek sayfa. Çift uzman sayfası yok.
+      // Havuz: parfüm sıralamasındaki bütün markalar, Dior ve DBS hariç.
+      // Yalnız Sisley de aynı sayfaya girer. Saf La Prairie ve Sensai girmez.
       {
-        const sevilParfumRst = isSevilAtama && parfumUzmanGrubuMu(a.grup_adi);
-        const zatenSira = bolumKurallari.some((x) => x.kriter_key === "siralama_marka");
-        if (sevilParfumRst && !zatenSira && siralamaMarkaOran === 0) {
-          let baseId = 9;
-          if (a.ciftUzman && !tumParfumGrubuMu(a.grup_adi)) {
-            baseId = hgdUzmanGrubuMu(a.grup_adi) ? 12 : 11;
+        const gSevil = normalizeName(a.grup_adi || "");
+        const yalnizSisley = gSevil.includes("SISLEY")
+          && !/PARFUM|PRAIRIE|SENSAI|DIOR|HERMES|DOLCE|GABBANA|PUIG|GIVENCHY/.test(gSevil);
+        const sevilParfumRst = isSevilAtama && (parfumUzmanGrubuMu(a.grup_adi) || yalnizSisley);
+        if (sevilParfumRst && siralamaMarkaOran === 0) {
+          const satirlar = [
+            { kolon: 0, oran: 1, ilk: 10, adet: 3, ad: "Sevil parfüm ilk 10 içinde 3 marka" },
+            { kolon: 1, oran: 0.5, ilk: 10, adet: 4, ad: "Sevil parfüm ilk 10 içinde 4 marka" },
+            { kolon: 2, oran: 0.5, ilk: 15, adet: 5, ad: "Sevil parfüm ilk 15 içinde 5 marka" },
+          ];
+          for (const sk of satirlar) {
+            const bulunan = sevilParfumMarkaSay(a.magaza_id, sk.ilk);
+            const tuttu = bulunan >= sk.adet;
+            odulUygula(
+              { kriter_adi: sk.ad, kriter_key: "siralama_marka", prim_oran: sk.oran, prim_tip: "yuzde" },
+              {
+                tuttu,
+                kolon: sk.kolon,
+                detay: [{ ilk: sk.ilk, gereken: sk.adet, bulunan, tuttu }],
+                not: "Dior ve DBS hariç",
+              },
+              (oran) => { siralamaMarkaOran += oran; }
+            );
           }
-          const bolumIds = [baseId];
-          for (const bid of bolumIds) {
-            const bMeta = bolumMetaById.get(bid);
-            const havuz = bMeta?.markalar || ["PUIG", "HERMES", "DG", "GIV"];
-            const sayim = siralamaSayimMarkalari({ ...a, hamMarkalar: havuz }, havuz);
-            const kurallarB = (kurallarByBolum.get(bid) || []).filter(
-              (x) => x.satir_tipi === "kural" && x.kriter_key === "siralama_marka"
-            ).sort((a, b) => Number(a.id) - Number(b.id));
-            kurallarB.forEach((sk, kolon) => {
-              const r = siralamaMarkaTutuyorMu(
-                a.magaza_id,
-                sayim,
-                siralamaHedefFiltre(hedeflerByKural.get(sk.id) || [])
-              );
-              odulUygula(
-                sk,
-                { ...r, kolon, not: "Sevil parfüm sıralama" },
-                (oran) => { siralamaMarkaOran += oran; }
-              );
-            });
-          }
+          if (Number(a.grup_toplam_oran || 0) < 3.5) a.grup_toplam_oran = 3.5;
         }
       }
 
