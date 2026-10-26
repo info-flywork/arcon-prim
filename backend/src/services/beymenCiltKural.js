@@ -16,8 +16,8 @@
 //   Q kolonu yalnız cilt: LP / Sensai / Sisley / DBS sabitleri (atama o marka bölümündeyse).
 //   İzmir İstinyepark, Suadiye, Aqua: DBS ilk 2 = 10.000. Genel DBS kademesi yok. Ciro %1 yok.
 //   Suadiye Byredo: birincilik 30.000 / ilk 4 = 20.000 / ilk 7 = 10.000. Ciro %1 yok.
-//   Penhaligon's ve Byredo mağaza (parfüm) sıralaması, Hermes hariç.
-//   Tek uzman 100/90/80/70/50/25 bin. İki markada yarı. Ciro %1 yok.
+//   Penhaligon's ve Byredo sabit kademe yalnız cilt bakım satışı ve cilt sırası. Parfüm satışı almaz.
+//   Tek uzman 100/90/80/70/50/25 bin. İki markada yarı. Hermes hariç. Ciro %1 yok.
 //   Suadiye ve Tersane bu merdivene girmez. Onların kendi kademesi vardır.
 //   Diğer mağazalarda DBS genel kademe. Bu üç mağaza o sayıma girmez.
 //   Tersane: CH makyaj/parfüm sabit + niche % (ayrı); DBS cilt ayrı.
@@ -212,12 +212,13 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
       || atamaByUzmanMagaza.get(`${String(uid)}|${String(mid)}`)
       || [];
     if (!list.length) return false;
-    const needle = String(markaNeedle || "").toLocaleUpperCase("tr-TR");
+    const needle = normalizeName(markaNeedle);
     return list.some((a) => {
-      const adi = String(a.bolum_adi || "").toLocaleUpperCase("tr-TR");
-      const grup = String(a.grup_adi || "").toLocaleUpperCase("tr-TR");
-      return adi.includes(needle) || (needle === "SENSAI" && adi.includes("SENSAİ"))
-        || (needle === "LP" && (adi.includes("PRAIRIE") || adi.includes("LP")));
+      const adi = normalizeName(a.bolum_adi);
+      const grup = normalizeName(a.grup_adi);
+      if (needle === "LP") return adi.includes("LP") || adi.includes("PRAIRIE") || grup.includes("PRAIRIE");
+      if (needle === "SENSAI") return adi.includes("SENSAI") || grup.includes("SENSAI");
+      return adi.includes(needle) || grup.includes(needle);
     });
   }
 
@@ -230,12 +231,19 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
     if (!key || !tip || !(s.esas > 0)) continue;
     const hk = `${s.uzmanId}|${s.magazaId}|${key}`;
     hucre.set(hk, (hucre.get(hk) || 0) + Number(s.esas));
+    if (normalizeName(s.aks).includes("CILT")) {
+      const ck = `${hk}|CILT`;
+      hucre.set(ck, (hucre.get(ck) || 0) + Number(s.esas));
+    }
     if (!uzmanMagazalar.has(s.uzmanId)) uzmanMagazalar.set(s.uzmanId, new Set());
     uzmanMagazalar.get(s.uzmanId).add(s.magazaId);
   }
 
   function esas(uzmanId, magazaId, key) {
     return hucre.get(`${uzmanId}|${magazaId}|${key}`) || 0;
+  }
+  function esasCilt(uzmanId, magazaId, key) {
+    return hucre.get(`${uzmanId}|${magazaId}|${key}|CILT`) || 0;
   }
 
   function ekle(uzmanId, magazaId, tutar, detay) {
@@ -328,16 +336,18 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
     }
 
     if (set === "eylul") {
-      if (tip !== "SUADIYE" && tip !== "TERSANE" && (byredo > 0 || pen > 0)) {
-        const sira = enIyiSira(index, mid, "PARFUM", (m) => byredoMu(m) || penhaligonMu(m), hermesMi);
-        const iki = byredo > 0 && pen > 0;
+      const byredoCilt = esasCilt(uid, mid, "BYREDO");
+      const penCilt = esasCilt(uid, mid, "PENHALIGON");
+      if (tip !== "SUADIYE" && tip !== "TERSANE" && (byredoCilt > 0 || penCilt > 0)) {
+        const sira = enIyiSira(index, mid, "CILT", (m) => byredoMu(m) || penhaligonMu(m), hermesMi);
+        const iki = byredoCilt > 0 && penCilt > 0;
         ekle(uid, mid, kademeTutar(sira, iki ? NICHE_EYLUL_IKI : NICHE_EYLUL_TEK), {
           kural: iki
             ? "Penhaligon's ve Byredo iki marka (Eylül)"
             : "Penhaligon's ve Byredo tek uzman (Eylül)",
           kriter: "beymen_cilt",
           sira,
-          not: "Mağaza parfüm sıralaması. Hermes hariç. Ciro %1 yok.",
+          not: "Cilt bakım satışı ve cilt sırası. Parfüm satışı yok. Hermes hariç.",
         });
       }
 
@@ -387,7 +397,10 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
         }
       }
 
-      eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "LP"), "CILT", (m) => lpMi(m), lpCilt, null, "La Prairie cilt (Eylül)");
+      // LP cilt sabit yalnız La Prairie atamasına. Hermes uzmanının LP cirosu bu kademeyi almaz.
+      if (bolumdeMarkaVar(uid, mid, "LP")) {
+        eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "LP"), "CILT", (m) => lpMi(m), lpCilt, null, "La Prairie cilt (Eylül)");
+      }
       eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SENSAI"), "CILT", (m) => m.includes("SENSAI"), sensaiCilt, sensaiMak, "Sensai (Eylül)");
       eylulMarkaBlok(ekle, index, uid, mid, esas(uid, mid, "SISLEY"), "CILT", (m) => m.includes("SISLEY"), sisleyCilt, sisleyMak, "Sisley (Eylül)");
     }

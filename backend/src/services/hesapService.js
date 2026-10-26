@@ -884,6 +884,7 @@ async function hesapla(donemId, options = {}) {
           magazaId: soMagazaId,
           marka: urunMarka,
           esas: primeEsas,
+          aks: b.urun_aks,
         });
       }
       if (isDiorUrun && isSevilMag && primeEsas > 0) {
@@ -1037,6 +1038,7 @@ async function hesapla(donemId, options = {}) {
       siralar: siraList,
       magazaAd: magazaMap,
       kademe: beymenCiltKademe,
+      atamaByUzmanMagaza,
     });
     const beymenCiltYazildi = new Set();
 
