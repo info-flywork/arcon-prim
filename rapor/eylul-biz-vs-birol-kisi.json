@@ -1,0 +1,575 @@
+{
+  "ozet": {
+    "pivotW": 4704045.970000001,
+    "birolW": 4625344,
+    "kisiBiz": 245,
+    "kisiBirol": 246,
+    "fark500ust": 116,
+    "bizFazla": 60,
+    "birolFazla": 56
+  },
+  "top40": [
+    {
+      "ad": "Derya can Kaya aktaş",
+      "biz": 32051,
+      "birol": 2051,
+      "fark": 30000,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "LP/cilt sabit (Q): +30000"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Erdem Aksu",
+      "biz": 41788,
+      "birol": 13978,
+      "fark": 27810,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +13929",
+        "Parfüm %0,5 (S): +6965",
+        "Parfüm %0,5 (T): +6965"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Sezen Semerci",
+      "biz": 10782,
+      "birol": 37402,
+      "fark": -26620,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "LP/cilt sabit (Q): -20000",
+        "Satış (J): -6620"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Beyza Gül Doğan",
+      "biz": 33312,
+      "birol": 13554,
+      "fark": 19758,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +9879",
+        "Parfüm %0,5 (S): +4940",
+        "Parfüm %0,5 (T): +4940"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Murat Taşkın",
+      "biz": 27144,
+      "birol": 9457,
+      "fark": 17687,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +8844",
+        "Parfüm %0,5 (S): +4422",
+        "Parfüm %0,5 (T): +4422"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Zinnet Taçyıldız",
+      "biz": 25588,
+      "birol": 10446,
+      "fark": 15142,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +10143",
+        "Parfüm %0,5 (S): +5072",
+        "Satış (J): -73"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Orhan Demirci",
+      "biz": 33760,
+      "birol": 18683,
+      "fark": 15077,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +10052",
+        "Parfüm %0,5 (T): +5026"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Emre Bilgin",
+      "biz": 24289,
+      "birol": 9715,
+      "fark": 14574,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +9715",
+        "Parfüm %0,5 (S): +4858"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Murat Doğan",
+      "biz": 78573,
+      "birol": 93084,
+      "fark": -14511,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -14365",
+        "Dior magaza (M): -71",
+        "Satış (J): -71"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Kayhan Çetinkılıç",
+      "biz": 32158,
+      "birol": 17689,
+      "fark": 14469,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +9682",
+        "Parfüm %0,5 (T): +4841",
+        "Parfüm %0,5 (S): -54"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Akın Karyağ",
+      "biz": 43058,
+      "birol": 28705,
+      "fark": 14353,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (S): +7176",
+        "Parfüm %0,5 (T): +7176"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Çağatay Kiriş",
+      "biz": 13833,
+      "birol": 27665,
+      "fark": -13832,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -13833"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Burak Taşkın",
+      "biz": 7534,
+      "birol": 21279,
+      "fark": -13745,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -6873",
+        "Parfüm %0,5 (S): -3436",
+        "Parfüm %0,5 (T): -3436"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Neslihan Özdemir",
+      "biz": 34049,
+      "birol": 20830,
+      "fark": 13219,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +6609",
+        "Parfüm %0,5 (S): +3305",
+        "Parfüm %0,5 (T): +3305"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Esra Özer",
+      "biz": 35691,
+      "birol": 48381,
+      "fark": -12690,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -6577",
+        "Dior magaza (M): -2107",
+        "Dior makyaj (N): -1391"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Pelşin Sezgin",
+      "biz": 39128,
+      "birol": 27048,
+      "fark": 12080,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (S): +6040",
+        "Parfüm %0,5 (T): +6040"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Berke Çakmak",
+      "biz": 12337,
+      "birol": 23996,
+      "fark": -11659,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -7773",
+        "Parfüm %0,5 (T): -3887"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Arda Zeyrek",
+      "biz": 10439,
+      "birol": 20877,
+      "fark": -10438,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -10439"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Fatma Yılmaz",
+      "biz": 17291,
+      "birol": 6916,
+      "fark": 10375,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +6916",
+        "Parfüm %0,5 (S): +3458"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Yusuf Kara",
+      "biz": 22033,
+      "birol": 32195,
+      "fark": -10162,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -10163"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Ceren Bıçakçı",
+      "biz": 64058,
+      "birol": 74114,
+      "fark": -10056,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -5028",
+        "Parfüm %0,5 (S): -2514",
+        "Parfüm %0,5 (T): -2514"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Nesrin Bulut",
+      "biz": 12879,
+      "birol": 2879,
+      "fark": 10000,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "LP/cilt sabit (Q): +10000"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Ayten Kurtuluş",
+      "biz": 12354,
+      "birol": 2354,
+      "fark": 10000,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "LP/cilt sabit (Q): +10000"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Özlem Kiser",
+      "biz": 16966,
+      "birol": 7223,
+      "fark": 9743,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +6495",
+        "Parfüm %0,5 (S): +3248"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Mehmet Yaraş",
+      "biz": 63118,
+      "birol": 72799,
+      "fark": -9681,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -9901",
+        "Dior parfüm (O): +276"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Mesut Yılmaz",
+      "biz": 42860,
+      "birol": 51970,
+      "fark": -9110,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -15270",
+        "Parfüm %0,5 (S): +3080",
+        "Parfüm %0,5 (T): +3080"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "İlhan Baylan",
+      "biz": 48697,
+      "birol": 57744,
+      "fark": -9047,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -9047"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Faruk Karlı",
+      "biz": 14256,
+      "birol": 5413,
+      "fark": 8843,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +4422",
+        "Parfüm %0,5 (S): +2211",
+        "Parfüm %0,5 (T): +2211"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Fatma Yılmaz Çakır",
+      "biz": 43583,
+      "birol": 52370,
+      "fark": -8787,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -8205",
+        "Dior magaza (M): -338",
+        "Dior makyaj (N): -223"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Arel Tunalı",
+      "biz": 8266,
+      "birol": 16533,
+      "fark": -8267,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -8266"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Gülnur Gürer Aydın",
+      "biz": 42908,
+      "birol": 50983,
+      "fark": -8075,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -7988",
+        "Dior magaza (M): -52"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Muhammed Kaya",
+      "biz": 47866,
+      "birol": 39888,
+      "fark": 7978,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (T): +7978"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Nihal Badaş",
+      "biz": 41796,
+      "birol": 49561,
+      "fark": -7765,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Dior cilt (P): -7765"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Zehra Karaca",
+      "biz": 8406,
+      "birol": 16146,
+      "fark": -7740,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Satış (J): -7740"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Pelin Kahya",
+      "biz": 36588,
+      "birol": 29270,
+      "fark": 7318,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (S): +7318"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Ahmet Bozdağ",
+      "biz": 36462,
+      "birol": 29170,
+      "fark": 7292,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (S): +7292"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Hasan Hüseyin Aynal",
+      "biz": 7082,
+      "birol": 14164,
+      "fark": -7082,
+      "taraf": "BİROL yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): -7082"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Dilek Özpek",
+      "biz": 20972,
+      "birol": 13981,
+      "fark": 6991,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (T): +6991"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Elçin Kayadibi",
+      "biz": 22375,
+      "birol": 15448,
+      "fark": 6927,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %0,5 (S): +3463",
+        "Parfüm %0,5 (T): +3463"
+      ],
+      "only": "ortak"
+    },
+    {
+      "ad": "Yavuzhan Dağtekin",
+      "biz": 11133,
+      "birol": 4453,
+      "fark": 6680,
+      "taraf": "BİZ yüksek",
+      "ana_kolonlar": [
+        "Parfüm %1 (R): +4453",
+        "Parfüm %0,5 (S): +2227"
+      ],
+      "only": "ortak"
+    }
+  ],
+  "kuralKovalari": [
+    {
+      "kural": "Parfüm %0,5 (S)",
+      "kisi": 24,
+      "netFark": 116975,
+      "ornek": [
+        "Akın Karyağ (14353)",
+        "Pelşin Sezgin (12080)",
+        "Pelin Kahya (7318)",
+        "Ahmet Bozdağ (7292)",
+        "Elçin Kayadibi (6927)"
+      ]
+    },
+    {
+      "kural": "Dior cilt (P)",
+      "kisi": 18,
+      "netFark": -98099,
+      "ornek": [
+        "Murat Doğan (-14511)",
+        "Esra Özer (-12690)",
+        "Mehmet Yaraş (-9681)",
+        "İlhan Baylan (-9047)",
+        "Fatma Yılmaz Çakır (-8787)"
+      ]
+    },
+    {
+      "kural": "Parfüm %1 (R)",
+      "kisi": 34,
+      "netFark": 43391,
+      "ornek": [
+        "Erdem Aksu (27810)",
+        "Beyza Gül Doğan (19758)",
+        "Murat Taşkın (17687)",
+        "Zinnet Taçyıldız (15142)",
+        "Orhan Demirci (15077)"
+      ]
+    },
+    {
+      "kural": "Satış (J)",
+      "kisi": 11,
+      "netFark": -33740,
+      "ornek": [
+        "Zehra Karaca (-7740)",
+        "Nalin Dünya Aksoy (-6575)",
+        "Özgen Çataloğlu (-6520)",
+        "Muhammed Ali Koyuncu (-2607)",
+        "Buse Yıldız (-2423)"
+      ]
+    },
+    {
+      "kural": "LP/cilt sabit (Q)",
+      "kisi": 5,
+      "netFark": 24573,
+      "ornek": [
+        "Derya can Kaya aktaş (30000)",
+        "Sezen Semerci (-26620)",
+        "Nesrin Bulut (10000)",
+        "Ayten Kurtuluş (10000)",
+        "Derya Kaleli (1193)"
+      ]
+    },
+    {
+      "kural": "Parfüm %0,5 (T)",
+      "kisi": 21,
+      "netFark": 22528,
+      "ornek": [
+        "Muhammed Kaya (7978)",
+        "Dilek Özpek (6991)",
+        "Yunus emre Özkan (-6500)",
+        "Hadi Serkan Kaleli (-6375)",
+        "Hülya Demiröz (-5636)"
+      ]
+    },
+    {
+      "kural": "Dior parfüm (O)",
+      "kisi": 3,
+      "netFark": 3191,
+      "ornek": [
+        "Aysun İriz Kanpolat (1509)",
+        "Cahide Tenik (935)",
+        "Esra Karaca (747)"
+      ]
+    }
+  ]
+}

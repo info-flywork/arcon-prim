@@ -78,24 +78,70 @@ function markaAnahtar(marka) {
   if (n.includes("PENHALIGON")) return "PENHALIGON";
   if (n.includes("ARTISAN")) return "LARTISAN";
   if (n.includes("DRIES") || n.includes("VAN NOTEN")) return "DRIES";
-  if (n.includes("STURM") || (n.includes("BARBARA") && n.includes("DR"))) return "DBS";
+  if (n.includes("STURM") || n.includes("STRUM") || (n.includes("BARBARA") && n.includes("DR"))) return "DBS";
   if (n.includes("HERMES")) return "HERMES";
   if (n.includes("DIOR")) return "DIOR";
   if (n.includes("GIVENCHY") || n === "GIV") return "GIVENCHY";
-  if (n.includes("HERRERA") || n.includes("CAROLINA")) return "CH";
+  if (n.includes("HERRERA") || n.includes("CAROLINA")) return "CAROLINA_HERRERA";
   if (n.includes("PRAIRIE") || n === "LP") return "LP";
   if (n.includes("SISLEY")) return "SISLEY";
   if (n.includes("SENSAI")) return "SENSAI";
   return null;
 }
 
+/** Niche matris anahtarı (ZORLU / TERSANE / ISTINYEPARK / …). */
+function nicheMagazaAnahtar(ad) {
+  const n = normalizeName(ad || "");
+  if (!n.includes("BEYMEN")) return null;
+  if (n.includes("TERSANE")) return "TERSANE";
+  if (n.includes("SUADIYE")) return "SUADIYE";
+  if (n.includes("AQUA")) return "AQUA";
+  if (n.includes("IZMIR") && n.includes("ISTINYE")) return "IZMIR_ISTINYE";
+  if (n.includes("ZORLU")) return "ZORLU";
+  if (n.includes("AKASYA")) return "AKASYA";
+  if (n.includes("PANORA")) return "PANORA";
+  if (n.includes("ARMADA")) return "ARMADA";
+  if (n.includes("KAVAKLIDERE")) return "KAVAKLIDERE";
+  if (n.includes("ISTINYE")) return "ISTINYEPARK";
+  return null;
+}
+
 /**
- * Ağustos Beymen ciro %1.
- * Byredo ve Penhaligon's yazılmaz.
- * Suadiye'de Byredo yazılır. Tersane'de Byredo ve Penhaligon's yazılır.
- * DBS ve diğer markalar bu kesintinin dışında kalır.
+ * Beymen niche/DBS mağaza-% matrisi (KRITER_271026).
+ * Map key: `${magaza_anahtar}|${marka_anahtar}` → oran
+ * Dönüş: sayı | null (matris satırı yok)
  */
-function agustosBeymenNicheCiroPrimVar(magaza, marka) {
+function beymenNicheMatrisOran(matrisMap, magaza, marka) {
+  if (!matrisMap || !matrisMap.size) return null;
+  const mKey = nicheMagazaAnahtar(magaza);
+  const aKey = markaAnahtar(marka);
+  if (!mKey || !aKey) return null;
+  if (matrisMap.has(`${mKey}|${aKey}`)) return Number(matrisMap.get(`${mKey}|${aKey}`));
+  return null;
+}
+
+/**
+ * Satış oranı: matris varsa o; Byredo/Penhaligon matriste yoksa 0; aksi defaultOran.
+ * (Ağustos+ niche tablosu — boş hücre = o marka için ciro primi yok.)
+ */
+function beymenNicheEfektifSatisOran(matrisMap, magaza, marka, defaultOran) {
+  const tip = nicheMagazaAnahtar(magaza) || magazaTip(magaza);
+  if (!tip) return defaultOran; // Beymen değil
+  const mat = beymenNicheMatrisOran(matrisMap, magaza, marka);
+  if (mat != null) return mat;
+  const anahtar = markaAnahtar(marka);
+  if (anahtar === "BYREDO" || anahtar === "PENHALIGON") return 0;
+  return defaultOran;
+}
+
+/**
+ * Geriye dönük: matris yokken eski Ağustos boolean kuralı.
+ * Matris yüklüyse efektif oran > 0 mı diye bakılır.
+ */
+function agustosBeymenNicheCiroPrimVar(magaza, marka, matrisMap = null) {
+  if (matrisMap && matrisMap.size) {
+    return beymenNicheEfektifSatisOran(matrisMap, magaza, marka, 1) > 0;
+  }
   const tip = magazaTip(magaza);
   if (!tip) return true;
   const anahtar = markaAnahtar(marka);
@@ -133,15 +179,45 @@ function siraIndex(siralar) {
   return by;
 }
 
-/** Markanın en iyi sırası. exclude daha iyi sıradaki markaları düşer (Hermes / La Prairie). */
-function enIyiSira(index, magazaId, cesit, kabul, exclude) {
+/**
+ * Markanın en iyi sırası.
+ * arconMu verilirse yalnız ARKA ARKAYA Arcon zincirinde sıkıştırma:
+ * arada rakip / boş sıra varsa zincir kırılır (üstteki uzak Arcon çekmez).
+ */
+function enIyiSira(index, magazaId, cesit, kabul, arconMu) {
   const list = index.get(`${magazaId}|${cesit}`) || [];
   const benim = list.filter((x) => kabul(x.marka) && Number.isFinite(x.sira));
   if (!benim.length) return null;
   const ham = Math.min(...benim.map((x) => x.sira));
-  if (!exclude) return ham;
-  const dus = list.filter((x) => x.sira < ham && exclude(x.marka)).length;
+  if (!arconMu) return ham;
+  const above = list
+    .filter((x) => Number(x.sira) < ham)
+    .sort((a, b) => Number(b.sira) - Number(a.sira) || String(a.marka).localeCompare(String(b.marka)));
+  let dus = 0;
+  let zincirAlt = ham;
+  for (const x of above) {
+    const s = Number(x.sira);
+    if (zincirAlt - s > 1) break;
+    if (!arconMu(x.marka)) break;
+    dus += 1;
+    zincirAlt = s;
+  }
   return ham - dus;
+}
+
+function arconMarkaAdiMi(marka) {
+  const n = normalizeName(marka || "");
+  if (!n) return false;
+  return (
+    n.includes("DIOR") || n.includes("HERMES") || n.includes("GIVENCHY") ||
+    n.includes("DOLCE") || n.includes("GABBANA") || n === "DG" ||
+    n.includes("PRAIRIE") || n === "LP" || n.includes("SENSAI") || n.includes("SISLEY") ||
+    n.includes("RABANNE") || n.includes("GAULTIER") || n.includes("HERRERA") || n.includes("CAROLINA") ||
+    n.includes("BYREDO") || n.includes("PENHALIGON") || n.includes("ARTISAN") ||
+    n.includes("STURM") || n.includes("STRUM") || n.includes("BARBARA") ||
+    n.includes("DRIES") || n.includes("SCENTOLOGIA") || n.includes("NARCISO") ||
+    n.includes("ISSEY") || n.includes("ZADIG") || n.includes("PARADIS")
+  );
 }
 
 function hermesMi(marka) {
@@ -298,7 +374,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
 
     if (set === "agustos") {
       if (tip === "TERSANE" && (byredo > 0 || pen > 0 || lartisan > 0 || dries > 0)) {
-        const sira = enIyiSira(index, mid, "PARFUM", nicheParfumMu, hermesMi);
+        const sira = enIyiSira(index, mid, "PARFUM", nicheParfumMu, arconMarkaAdiMi);
         const tutar = kademeTutar(sira, TERSANE_AGUSTOS);
         ekle(uid, mid, tutar, {
           kural: "Tersane Niche (Ağustos)",
@@ -307,7 +383,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
           not: "Byredo, Penhaligon's, L'Artisan, Dries. Birincilik 30.000 / ilk 4 = 20.000 / ilk 7 = 10.000. Ciro primi yok.",
         });
       } else if (byredo > 0 || pen > 0 || lartisan > 0 || dries > 0) {
-        const sira = enIyiSira(index, mid, "PARFUM", nicheParfumMu, hermesMi);
+        const sira = enIyiSira(index, mid, "PARFUM", nicheParfumMu, arconMarkaAdiMi);
         const tablo = ikiMarka ? NICHE_AGUSTOS_IKI : NICHE_AGUSTOS_TEK;
         const tutar = kademeTutar(sira, tablo);
         ekle(uid, mid, tutar, {
@@ -322,7 +398,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
 
       if (dbs > 0) {
         const lpVar = (index.get(`${mid}|CILT`) || []).some((x) => lpMi(x.marka));
-        const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA"), null);
+        const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA") || m.includes("STRUM"), arconMarkaAdiMi);
         const magSay = dbsMagazaSayisi.get(String(uid))?.size || dbsMagazaSayisi.get(uid)?.size || 1;
         const tutar = dbsAgustosTutar(sira, magSay, lpVar);
         dbsAday.push({ uid, mid, tutar, sira, magSay, lpVar });
@@ -339,7 +415,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
       const byredoCilt = esasCilt(uid, mid, "BYREDO");
       const penCilt = esasCilt(uid, mid, "PENHALIGON");
       if (tip !== "SUADIYE" && tip !== "TERSANE" && (byredoCilt > 0 || penCilt > 0)) {
-        const sira = enIyiSira(index, mid, "CILT", (m) => byredoMu(m) || penhaligonMu(m), hermesMi);
+        const sira = enIyiSira(index, mid, "CILT", (m) => byredoMu(m) || penhaligonMu(m), arconMarkaAdiMi);
         const iki = byredoCilt > 0 && penCilt > 0;
         ekle(uid, mid, kademeTutar(sira, iki ? NICHE_EYLUL_IKI : NICHE_EYLUL_TEK), {
           kural: iki
@@ -352,7 +428,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
       }
 
       if (tip === "SUADIYE" && byredo > 0) {
-        const sira = enIyiSira(index, mid, "PARFUM", byredoMu, null);
+        const sira = enIyiSira(index, mid, "PARFUM", byredoMu, arconMarkaAdiMi);
         ekle(uid, mid, kademeTutar(sira, SUADIYE_BYREDO), {
           kural: "Suadiye Byredo (Eylül)",
           kriter: "beymen_cilt",
@@ -369,9 +445,9 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
           oran: 1,
           esas_baz: tl(nicheEsas),
         });
-        const chMak = enIyiSira(index, mid, "MAKYAJ", (m) => m.includes("HERRERA") || m.includes("CAROLINA"), null);
-        const chPar = enIyiSira(index, mid, "PARFUM", (m) => m.includes("HERRERA") || m.includes("CAROLINA"), null);
-        if (esas(uid, mid, "CH") > 0) {
+        const chMak = enIyiSira(index, mid, "MAKYAJ", (m) => m.includes("HERRERA") || m.includes("CAROLINA"), arconMarkaAdiMi);
+        const chPar = enIyiSira(index, mid, "PARFUM", (m) => m.includes("HERRERA") || m.includes("CAROLINA"), arconMarkaAdiMi);
+        if (esas(uid, mid, "CAROLINA_HERRERA") > 0) {
           const makTutar = chMak != null && chMak <= 1 ? 20000 : chMak != null && chMak <= 2 ? 10000 : 0;
           const parTutar = chPar != null && chPar <= 5 ? 20000 : chPar != null && chPar <= 10 ? 10000 : 0;
           ekle(uid, mid, makTutar, { kural: "Tersane CH makyaj (Eylül)", kriter: "beymen_cilt", sira: chMak });
@@ -381,7 +457,7 @@ function beymenCiltPrimleri({ kuralSeti, satirlar, siralar, magazaAd, kademe, at
 
       // İzmir, Suadiye, Aqua ciro %1 yok. DBS bu üçünde ilk 2 = 10.000.
       if (dbs > 0) {
-        const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA"), null);
+        const sira = enIyiSira(index, mid, "CILT", (m) => m.includes("STURM") || m.includes("BARBARA") || m.includes("STRUM"), arconMarkaAdiMi);
         if (dbsIlkIkiOnBinMi(tip)) {
           dbsAday.push({
             uid, mid, sira, magSay: 1, lpVar: false,
@@ -441,14 +517,14 @@ function dbsAgustosTutar(sira, magSay, lpVar) {
 
 function eylulMarkaBlok(ekle, index, uid, mid, markaEsas, cesit, kabul, ciltKademe, makyajKademe, ad) {
   if (!(markaEsas > 0)) return;
-  const sira = enIyiSira(index, mid, cesit, kabul, null);
+  const sira = enIyiSira(index, mid, cesit, kabul, arconMarkaAdiMi);
   ekle(uid, mid, kademeTutar(sira, ciltKademe), {
     kural: ad,
     kriter: "beymen_cilt",
     sira,
   });
   if (makyajKademe) {
-    const mak = enIyiSira(index, mid, "MAKYAJ", kabul, null);
+    const mak = enIyiSira(index, mid, "MAKYAJ", kabul, arconMarkaAdiMi);
     ekle(uid, mid, kademeTutar(mak, makyajKademe), {
       kural: `${ad} makyaj`,
       kriter: "beymen_cilt",
@@ -459,4 +535,12 @@ function eylulMarkaBlok(ekle, index, uid, mid, markaEsas, cesit, kabul, ciltKade
   // satış %1 zaten bölüm satis_basi / F kolonundan gelir.
 }
 
-module.exports = { beymenCiltPrimleri, markaAnahtar, magazaTip, agustosBeymenNicheCiroPrimVar };
+module.exports = {
+  beymenCiltPrimleri,
+  markaAnahtar,
+  magazaTip,
+  nicheMagazaAnahtar,
+  beymenNicheMatrisOran,
+  beymenNicheEfektifSatisOran,
+  agustosBeymenNicheCiroPrimVar,
+};

@@ -7,7 +7,24 @@ require("dotenv").config();
 const pool = require("./db");
 const { importZeops, importSellout, importHedef, importSiralama, importUzmanMagaza, importStok } = require("./services/importService");
 const { hesapla, markaGrubunda, genisletMarkalar, grupAdindanMarkaAnahtarlari } = require("./services/hesapService");
-const { agustosBeymenNicheCiroPrimVar } = require("./services/beymenCiltKural");
+const {
+  agustosBeymenNicheCiroPrimVar,
+  beymenNicheEfektifSatisOran,
+} = require("./services/beymenCiltKural");
+
+let _beymenNicheMatrisCache = null;
+async function loadBeymenNicheMatris(conn = pool) {
+  if (_beymenNicheMatrisCache) return _beymenNicheMatrisCache;
+  const map = new Map();
+  try {
+    const [rows] = await conn.query(
+      "SELECT magaza_anahtar, marka_anahtar, oran FROM beymen_niche_satis_oran"
+    );
+    for (const r of rows) map.set(`${r.magaza_anahtar}|${r.marka_anahtar}`, Number(r.oran));
+  } catch (_) { /* tablo yok */ }
+  _beymenNicheMatrisCache = map;
+  return map;
+}
 const { normalizeName } = require("./util");
 const {
   normalizeCanonicalCode,
@@ -2809,9 +2826,20 @@ function satirSatisPrimleri(primeEsas, meta) {
 
   const marka = meta.marka || "";
   const kuralSeti = meta.kuralSeti || "";
-  const { taban, ek } = satisBasiOranlari(meta.satisOran);
+  let efektifSatis = meta.satisOran;
+  if (bayi === "BEYMEN" || normalizeName(magaza).includes("BEYMEN")) {
+    const matris = meta.beymenNicheMatris || _beymenNicheMatrisCache;
+    if (matris && matris.size) {
+      efektifSatis = beymenNicheEfektifSatisOran(
+        matris, magaza, marka, Number(meta.satisOran != null ? meta.satisOran : 1)
+      );
+    } else if (kuralSeti === "agustos" && !agustosBeymenNicheCiroPrimVar(magaza, marka)) {
+      efektifSatis = 0;
+    }
+  }
+  const { taban, ek } = satisBasiOranlari(efektifSatis);
   let prim1 = +(E * (taban / 100)).toFixed(2);
-  if (kuralSeti === "agustos" && !agustosBeymenNicheCiroPrimVar(magaza, marka)) prim1 = 0;
+  if (efektifSatis === 0) prim1 = 0;
   // Birol: bütün Sephora mağazalarında SENSAI markası → Prim %1 bir kez daha.
   // Sisley bu kolona yazılmaz. SENSAİ (İ) de SENSAI sayılır.
   let sensai = 0;
@@ -3485,7 +3513,8 @@ async function satirSatirlariHazirla(donemId, rows) {
   return rows;
 }
 
-function primSatirlariniIsle(rows, { aciklama, kolonFiltre } = {}) {
+async function primSatirlariniIsle(rows, { aciklama, kolonFiltre } = {}) {
+  await loadBeymenNicheMatris();
   let birlesik = primSatirlariBirlesir(rows.map(primSatirMap));
   birlesik = mukerrerSatiriniAltaAyir(netMukkerrerDagit(birlesik));
   if (aciklama || (kolonFiltre && kolonFiltre.satis_turu)) {
@@ -3508,7 +3537,7 @@ app.get("/api/prim-raporu/:donemId/satirlar", wrap(async (req, res) => {
   const { selectSql, params } = await primSatirSorgusu(donemId, { q, aciklama, kolonFiltre });
   const [rows] = await pool.query(selectSql, params);
   await satirSatirlariHazirla(donemId, rows);
-  const birlesik = primSatirlariniIsle(rows, { aciklama, kolonFiltre });
+  const birlesik = await primSatirlariniIsle(rows, { aciklama, kolonFiltre });
   const sayim = birlesik.length;
   const offset = (sayfa - 1) * limit;
   const satirlar = birlesik.slice(offset, offset + limit);
@@ -3555,7 +3584,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/degerler", wrap(async (req, res) => 
   if (kolon === "satis_turu" || kolon === "rapor_aciklama") {
     const [ham] = await pool.query(selectSql, params);
     await satirSatirlariHazirla(donemId, ham);
-    const birlesik = primSatirlariniIsle(ham, { aciklama, kolonFiltre });
+    const birlesik = await primSatirlariniIsle(ham, { aciklama, kolonFiltre });
     const set = new Set(birlesik.map((s) => s[kolon]).filter(Boolean));
     let degerler = [...set].sort((a, b) => String(a).localeCompare(String(b), "tr"));
     if (ara) {
@@ -3779,6 +3808,7 @@ app.get("/api/prim-raporu/:donemId/satirlar/indir", wrap(async (req, res) => {
   }
   applyNoktaUzmanSayisi(rows, noktaMap);
   applyParfumUzmanSayisi(rows, parfumMap);
+  await loadBeymenNicheMatris();
 
   const satirlar = mukerrerSatiriniAltaAyir(netMukkerrerDagit(rows.map(primSatirMap)));
   for (const s of satirlar) {
@@ -4590,6 +4620,74 @@ app.get("/api/dashboard/:donemId", wrap(async (req, res) => {
   const [[stok]] = await pool.query(
     "SELECT COUNT(*) satir FROM import_log WHERE donem_id=? AND tip IN ('stok','uniq_kod')", [d]);
   res.json({ beyan, sellout: so, prim, hedef, siralama: sira, atama, stok });
+}));
+
+// ---------- İstisna / ek prim chatbot ----------
+const ekPrimStore = require("./services/ekPrimStore");
+const { sohbet: ekPrimSohbet, openaiKey } = require("./services/ekPrimChatService");
+const { istisnaXlsxBuffer } = require("./services/ekPrimExcel");
+
+app.get("/api/istisna-prim/durum", wrap(async (req, res) => {
+  res.json({
+    openai_hazir: Boolean(openaiKey()),
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  });
+}));
+
+app.get("/api/istisna-prim/:donemId", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  res.json({ donem_id: donemId, kayitlar: ekPrimStore.oku(donemId) });
+}));
+
+app.post("/api/istisna-prim/:donemId", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  const kayit = ekPrimStore.ekle(donemId, req.body || {});
+  res.json(kayit);
+}));
+
+app.delete("/api/istisna-prim/:donemId/:id", wrap(async (req, res) => {
+  const sonuc = ekPrimStore.sil(Number(req.params.donemId), req.params.id);
+  res.json(sonuc);
+}));
+
+app.post("/api/istisna-prim/:donemId/chat", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  if (!donemId) return res.status(400).json({ hata: "donemId gerekli" });
+  const mesaj = req.body?.mesaj || req.body?.message || "";
+  if (!String(mesaj).trim()) return res.status(400).json({ hata: "mesaj boş" });
+  try {
+    const sonuc = await ekPrimSohbet(donemId, req.body?.history || [], mesaj);
+    res.json(sonuc);
+  } catch (e) {
+    const status = e.code === "no_key" ? 503 : e.status === 401 ? 401 : 502;
+    res.status(status).json({ hata: e.message || "Chat hatası", kod: e.code || "chat_hata" });
+  }
+}));
+
+app.get("/api/istisna-prim/:donemId/xlsx", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  const [[donem]] = await pool.query("SELECT ad FROM donem WHERE id=?", [donemId]);
+  const buf = await istisnaXlsxBuffer(donemId, donem?.ad);
+  const ad = `Istisna_Ek_Prim_${(donem?.ad || donemId).toString().replace(/\s+/g, "_")}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${ad}"`);
+  res.send(buf);
+}));
+
+/** Istisna kayıtlarını Prim Hesaplama satırlarına işleyip Excel üretir. */
+app.get("/api/istisna-prim/:donemId/xlsx-uygula", wrap(async (req, res) => {
+  const donemId = Number(req.params.donemId);
+  const [[donem]] = await pool.query("SELECT ad FROM donem WHERE id=?", [donemId]);
+  if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı" });
+  const veri = await primRaporuVerisi(donemId);
+  const buf = await istisnaXlsxBuffer(donemId, donem.ad, {
+    uygula: true,
+    satirlar: veri.satirlar || [],
+  });
+  const ad = `Prim_Hesaplama_Istisna_${String(donem.ad || donemId).replace(/\s+/g, "_")}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${ad}"`);
+  res.send(buf);
 }));
 
 // Her hata (multer dahil) JSON dönsün — düz metin "Internal Server Error" yok

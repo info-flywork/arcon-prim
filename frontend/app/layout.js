@@ -1,5 +1,6 @@
 import "./globals.css";
 import Menu from "./components/Menu";
+import IstisnaChatbot from "./components/IstisnaChatbot";
 
 export const metadata = {
   title: "Arcon Prim Sistemi",
@@ -26,6 +27,7 @@ export default function RootLayout({ children }) {
           </aside>
           <main className="icerik">{children}</main>
         </div>
+        <IstisnaChatbot />
       </body>
     </html>
   );
