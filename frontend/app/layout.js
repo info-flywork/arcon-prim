@@ -1,6 +1,6 @@
+import { Suspense } from "react";
 import "./globals.css";
-import Menu from "./components/Menu";
-import IstisnaChatbot from "./components/IstisnaChatbot";
+import DonemGecmisi from "./components/DonemGecmisi";
 
 export const metadata = {
   title: "Arcon Prim Sistemi",
@@ -13,21 +13,15 @@ export default function RootLayout({ children }) {
       <body data-app-shell="1">
         <div className="layout">
           <aside className="sidebar">
-            <div className="sidebar-isik sidebar-isik-bir" />
-            <div className="sidebar-isik sidebar-isik-iki" />
             <div className="sidebar-marka">
-              <span className="logo">A<span>+</span></span>
-              <span className="marka-metin">
-                <strong>Arcon Prim</strong>
-                <small>Prim yönetim sistemi</small>
-              </span>
+              <span className="marka-metin">ARCON PRIM</span>
             </div>
-            <Menu />
-            <div className="alt-bilgi">Arcon Prim <span>·</span> v1.0</div>
+            <Suspense fallback={<div className="gecmis-panel"><p className="gecmis-bos">Yükleniyor…</p></div>}>
+              <DonemGecmisi />
+            </Suspense>
           </aside>
           <main className="icerik">{children}</main>
         </div>
-        <IstisnaChatbot />
       </body>
     </html>
   );

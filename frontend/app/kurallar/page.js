@@ -8,6 +8,12 @@ const oranYaz = (deger) =>
 const tutarYaz = (deger) =>
   Number(deger || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
 
+const TIP_ETIKET = {
+  kural: "Standart kural",
+  grup_toplam: "Grup toplamı",
+  bonus: "Bonus",
+};
+
 function kuralOdulYaz(kural) {
   if (String(kural.prim_tip || "yuzde").toLowerCase() === "sabit_tl") {
     return `${tutarYaz(kural.prim_tutar)} ₺`;
@@ -126,6 +132,7 @@ export default function Kurallar() {
   const [kurallar, setKurallar] = useState([]);
   const [mesaj, setMesaj] = useState(null);
   const [arama, setArama] = useState("");
+  const [tip, setTip] = useState("tumu");
   const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenlenen, setDuzenlenen] = useState(null);
   const [primTip, setPrimTip] = useState("yuzde");
@@ -147,9 +154,15 @@ export default function Kurallar() {
     yukle();
   }, []);
 
+  const tipler = useMemo(
+    () => [...new Set(kurallar.map((kural) => kural.satir_tipi).filter(Boolean))],
+    [kurallar]
+  );
+
   const filtreli = useMemo(() => {
     const sorgu = arama.trim().toLocaleLowerCase("tr-TR");
     return kurallar.filter((kural) => {
+      if (tip !== "tumu" && kural.satir_tipi !== tip) return false;
       if (!sorgu) return true;
       return [
         kural.kanal,
@@ -159,9 +172,26 @@ export default function Kurallar() {
         kural.kriter_adi,
         kural.kriter_tipi,
         kural.not_metni,
+        TIP_ETIKET[kural.satir_tipi],
       ].some((alan) => String(alan || "").toLocaleLowerCase("tr-TR").includes(sorgu));
     });
-  }, [arama, kurallar]);
+  }, [arama, kurallar, tip]);
+
+  const bonusSayisi = kurallar.filter((kural) => kural.satir_tipi === "bonus").length;
+  const grupSayisi = useMemo(() => {
+    const set = new Set(
+      kurallar.map((kural) =>
+        [
+          kural.kanal,
+          kural.bolum_adi,
+          kural.marka_grubu_adi || "",
+          kural.uzman_tipi || "",
+          kural.alt_kanal || "",
+        ].join("|")
+      )
+    );
+    return set.size;
+  }, [kurallar]);
 
   const gruplar = useMemo(() => {
     const sonuc = new Map();
@@ -277,10 +307,42 @@ export default function Kurallar() {
           </svg>
         </div>
         <div>
+          <span>Hesaplama motoru</span>
           <h2>Prim Kuralları</h2>
-          <p>Oran (%) veya sabit TL girin; değişiklik hesaplamaya yansır.</p>
+          <p>Onaylı kural setini inceleyin; oran (%) veya sabit TL güncelleyin.</p>
+        </div>
+        <div className="kural-hero-durum">
+          <i />
+          <span>
+            <strong>Kurallar aktif</strong>
+            <small>Hesaplamalarda kullanılıyor</small>
+          </span>
         </div>
       </section>
+
+      <div className="kural-istatistikler">
+        <div>
+          <span className="kural-istat-ikon mavi">#</span>
+          <span>
+            <small>Toplam kural</small>
+            <strong>{kurallar.length}</strong>
+          </span>
+        </div>
+        <div>
+          <span className="kural-istat-ikon mor">G</span>
+          <span>
+            <small>Kural grubu</small>
+            <strong>{grupSayisi}</strong>
+          </span>
+        </div>
+        <div>
+          <span className="kural-istat-ikon turkuaz">+</span>
+          <span>
+            <small>Bonus kuralı</small>
+            <strong>{bonusSayisi}</strong>
+          </span>
+        </div>
+      </div>
 
       <div className="kural-araclar">
         <div className="kural-arama">
@@ -291,8 +353,27 @@ export default function Kurallar() {
             onChange={(event) => setArama(event.target.value)}
             placeholder="Kural, kanal, marka veya kriter ara…"
           />
-          {arama && <button onClick={() => setArama("")} aria-label="Aramayı temizle">×</button>}
+          {arama && (
+            <button onClick={() => setArama("")} aria-label="Aramayı temizle">
+              ×
+            </button>
+          )}
         </div>
+        <div className="kural-tipler">
+          <button className={tip === "tumu" ? "aktif" : ""} onClick={() => setTip("tumu")}>
+            Tümü
+          </button>
+          {tipler.map((kuralTipi) => (
+            <button
+              key={kuralTipi}
+              className={tip === kuralTipi ? "aktif" : ""}
+              onClick={() => setTip(kuralTipi)}
+            >
+              {TIP_ETIKET[kuralTipi] || kuralTipi}
+            </button>
+          ))}
+        </div>
+        <span className="kural-sonuc">{filtreli.length} kural</span>
       </div>
 
       {mesaj && (
@@ -309,7 +390,7 @@ export default function Kurallar() {
         <div className="kural-bos">
           <span><AramaIkon /></span>
           <h3>Eşleşen kural bulunamadı</h3>
-          <p>Arama metnini değiştirip tekrar deneyin.</p>
+          <p>Arama metnini veya seçili filtreyi değiştirin.</p>
         </div>
       ) : (
         <div className="kural-gruplar">
@@ -319,7 +400,11 @@ export default function Kurallar() {
                 <div className="kural-kart-simge">{String(grup.baslik).charAt(0)}</div>
                 <div>
                   <h3>{grup.baslik}</h3>
+                  <span>
+                    {grup.liste.length} kural · {grup.uzmanTipi || "Aktif kural seti"}
+                  </span>
                 </div>
+                <span className="kural-kart-sayi">{grup.liste.length}</span>
               </header>
               <div className="kural-tablo-kapsayici">
                 <table className="kural-tablo">
@@ -327,7 +412,8 @@ export default function Kurallar() {
                     <tr>
                       <th>Kural</th>
                       <th>Kriter tipi</th>
-                      <th className="sag">Ödül</th>
+                      <th className="sag">Oran</th>
+                      <th>Tip</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -354,6 +440,11 @@ export default function Kurallar() {
                               <path d="m14 5 5 5M4 20l3.5-.7L19 7.8a2.1 2.1 0 0 0-3-3L4.7 16.4 4 20z" />
                             </svg>
                           </button>
+                        </td>
+                        <td>
+                          <span className={`kural-tip kural-tip-${kural.satir_tipi || "standart"}`}>
+                            {TIP_ETIKET[kural.satir_tipi] || kural.satir_tipi || "Kural"}
+                          </span>
                         </td>
                       </tr>
                     ))}

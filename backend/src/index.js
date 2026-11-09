@@ -136,6 +136,13 @@ async function ensureDfbPrimDisiKolonu() {
   );
 }
 
+/** Dönem bazlı serbest özel durum / kural talimatı (UI sohbet geçmişi). */
+async function ensureOzelTalimatKolonu() {
+  const [cols] = await pool.query("SHOW COLUMNS FROM donem LIKE 'ozel_talimat'");
+  if (cols.length) return;
+  await pool.query("ALTER TABLE donem ADD COLUMN ozel_talimat TEXT NULL");
+}
+
 function dfbPrimDisiAcikMi(flag) {
   if (flag == null || flag === "") return true;
   return Number(flag) === 1;
@@ -147,6 +154,7 @@ async function donemleriSenkronizeEt() {
   donemSyncPromise = (async () => {
     await ensureKuralSetiKolonu();
     await ensureDfbPrimDisiKolonu();
+    await ensureOzelTalimatKolonu();
     const simdi = new Date();
     const bitisYil = simdi.getFullYear();
     const bitisAy = 12; // bu yılın kalan ayları listede görünsün
@@ -206,6 +214,39 @@ app.get("/api/donemler", wrap(async (req, res) => {
   }
   const [rows] = await pool.query("SELECT * FROM donem ORDER BY yil ASC, ay ASC");
   res.json(rows);
+}));
+
+/** Sidebar: özel talimat yazılmış dönemler */
+app.get("/api/sohbetler", wrap(async (req, res) => {
+  await ensureOzelTalimatKolonu();
+  const [rows] = await pool.query(
+    `SELECT d.id, d.yil, d.ay, d.ad, d.durum,
+            1 AS not_sayisi,
+            d.created_at AS son_not_at,
+            d.ozel_talimat AS son_not
+     FROM donem d
+     WHERE d.ozel_talimat IS NOT NULL AND TRIM(d.ozel_talimat) <> ''
+     ORDER BY d.id DESC`
+  );
+  res.json(rows);
+}));
+
+app.put("/api/donemler/:id/ozel-talimat", wrap(async (req, res) => {
+  await ensureOzelTalimatKolonu();
+  const donemId = Number(req.params.id);
+  const metin = String(req.body?.metin ?? "").slice(0, 8000);
+  if (!donemId) return res.status(400).json({ hata: "Geçersiz dönem." });
+  const [[donem]] = await pool.query("SELECT id FROM donem WHERE id=? LIMIT 1", [donemId]);
+  if (!donem) return res.status(404).json({ hata: "Dönem bulunamadı." });
+  await pool.query(
+    "UPDATE donem SET ozel_talimat=? WHERE id=?",
+    [metin.trim() ? metin : null, donemId]
+  );
+  const [[row]] = await pool.query(
+    "SELECT id, ad, ozel_talimat FROM donem WHERE id=?",
+    [donemId]
+  );
+  res.json(row);
 }));
 
 /** Yeni takvim yılı dönemlerini açar. Yıl henüz gelmediyse reddeder. */

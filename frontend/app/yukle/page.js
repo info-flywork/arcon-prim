@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -11,7 +11,6 @@ const DOSYALAR = [
     kisa: "Uzman ve mağaza eşleşmeleri",
     hazirAnahtar: "atama",
     logTipleri: ["uzman-magaza", "uzman_magaza"],
-    zorunlu: true,
   },
   {
     tip: "sellout",
@@ -19,7 +18,6 @@ const DOSYALAR = [
     kisa: "Resmî bayi satış verisi",
     hazirAnahtar: "sellout",
     logTipleri: ["sellout"],
-    zorunlu: true,
   },
   {
     tip: "zeops",
@@ -27,23 +25,20 @@ const DOSYALAR = [
     kisa: "Uzman satış beyanları",
     hazirAnahtar: "zeops",
     logTipleri: ["zeops"],
-    zorunlu: true,
   },
   {
     tip: "hedef",
     baslik: "Ciro Hedefleri",
-    kisa: "Mağaza ve marka hedefleri — hedef primi için",
+    kisa: "Mağaza ve marka hedefleri",
     hazirAnahtar: "hedef",
     logTipleri: ["hedef"],
-    zorunlu: false,
   },
   {
     tip: "siralama",
     baslik: "Marka Sıralamaları",
-    kisa: "Aylık marka sıralamaları — sıralama/bonus için",
+    kisa: "Aylık marka sıralamaları",
     hazirAnahtar: "siralama",
     logTipleri: ["siralama"],
-    zorunlu: false,
   },
   {
     tip: "stok",
@@ -51,7 +46,6 @@ const DOSYALAR = [
     kisa: "Ürün master tamamlama",
     hazirAnahtar: "stok",
     logTipleri: ["stok", "uniq_kod"],
-    zorunlu: true,
   },
 ];
 
@@ -102,7 +96,6 @@ export default function PrimHesaplama() {
   const [panel, setPanel] = useState({});
   const [yukleniyor, setYukleniyor] = useState(null);
   const [hesaplaniyor, setHesaplaniyor] = useState(false);
-  const [hesapIlerleme, setHesapIlerleme] = useState(null);
   const [sonuclar, setSonuclar] = useState({});
   const [mesaj, setMesaj] = useState(null);
   const [sayfaYukleniyor, setSayfaYukleniyor] = useState(true);
@@ -112,7 +105,50 @@ export default function PrimHesaplama() {
   const [seciliYeniYil, setSeciliYeniYil] = useState(null);
   const [temizleniyor, setTemizleniyor] = useState(false);
   const [temizleOnay, setTemizleOnay] = useState(false);
-  const [kuralKaydediliyor, setKuralKaydediliyor] = useState(false);
+  const [ozelTalimat, setOzelTalimat] = useState("");
+  const notInputRef = useRef(null);
+  const talimatTimerRef = useRef(null);
+  const talimatSonKayitRef = useRef("");
+
+  function notAlaniniBoyutla(el) {
+    const alan = el || notInputRef.current;
+    if (!alan) return;
+    alan.style.height = "auto";
+    const max = 220;
+    alan.style.height = `${Math.min(Math.max(alan.scrollHeight, 24), max)}px`;
+  }
+
+  async function ozelTalimatiKaydet(donemId, metin) {
+    if (!donemId) return;
+    const temiz = String(metin ?? "");
+    if (temiz === talimatSonKayitRef.current) return;
+    const cevap = await fetch(`/api/donemler/${donemId}/ozel-talimat`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metin: temiz }),
+    });
+    const veri = await cevap.json().catch(() => ({}));
+    if (!cevap.ok) throw new Error(veri.hata || "Özel talimat kaydedilemedi");
+    talimatSonKayitRef.current = String(veri.ozel_talimat || "");
+    setDonemler((liste) =>
+      liste.map((d) =>
+        Number(d.id) === Number(donemId)
+          ? { ...d, ozel_talimat: veri.ozel_talimat }
+          : d
+      )
+    );
+    window.dispatchEvent(new Event("prim-sohbet-guncelle"));
+  }
+
+  function ozelTalimatDegisti(metin) {
+    setOzelTalimat(metin);
+    if (talimatTimerRef.current) clearTimeout(talimatTimerRef.current);
+    talimatTimerRef.current = setTimeout(() => {
+      ozelTalimatiKaydet(acikId, metin).catch((hata) => {
+        setMesaj({ tip: "hata", metin: hata.message });
+      });
+    }, 500);
+  }
 
   async function donemVerisi(donemId) {
     const [logCevap, dashboardCevap] = await Promise.all([
@@ -155,13 +191,14 @@ export default function PrimHesaplama() {
 
         setDonemler(liste);
         const queryDonem = Number(new URLSearchParams(window.location.search).get("donem") || 0) || null;
-        // Öncelik: URL → son hesaplanan (yüklü ay) → takvim ayı → ilk açık
+        // Öncelik: URL → içinde bulunulan ay → yoksa son hesaplanan → ilk açık
         const sonHesaplanan = [...liste].reverse().find((item) => item.durum === "hesaplandi");
+        const ilkAcik = liste.find((item) => item.durum === "acik");
         const secili =
           (queryDonem && liste.find((item) => Number(item.id) === queryDonem)) ||
-          sonHesaplanan ||
           buAy ||
-          liste.find((item) => item.durum === "acik") ||
+          sonHesaplanan ||
+          ilkAcik ||
           liste[liste.length - 1];
         if (!secili) throw new Error("Açılacak dönem bulunamadı");
         setAcikId(secili.id);
@@ -172,6 +209,40 @@ export default function PrimHesaplama() {
         setSayfaYukleniyor(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!acikId) {
+      setOzelTalimat("");
+      talimatSonKayitRef.current = "";
+      return;
+    }
+    let iptal = false;
+    (async () => {
+      try {
+        const liste = await fetch("/api/donemler").then((r) => r.json());
+        if (iptal || !Array.isArray(liste)) return;
+        const donem = liste.find((d) => Number(d.id) === Number(acikId));
+        const metin = String(donem?.ozel_talimat || "");
+        setOzelTalimat(metin);
+        talimatSonKayitRef.current = metin;
+        requestAnimationFrame(() => notAlaniniBoyutla());
+      } catch {
+        if (!iptal) {
+          setOzelTalimat("");
+          talimatSonKayitRef.current = "";
+        }
+      }
+    })();
+    return () => {
+      iptal = true;
+    };
+  }, [acikId]);
+
+  useEffect(() => {
+    return () => {
+      if (talimatTimerRef.current) clearTimeout(talimatTimerRef.current);
+    };
   }, []);
 
   const acikDonem = useMemo(
@@ -189,24 +260,50 @@ export default function PrimHesaplama() {
     return (acikPanel.loglar || []).some((log) => dosya.logTipleri.includes(log.tip));
   }
 
-  const zorunluDosyalarHazir = DOSYALAR.filter((d) => d.zorunlu).every(dosyaHazir);
+  const tumDosyalarHazir = DOSYALAR.every(dosyaHazir);
   const primVar = Number(acikPanel.dashboard?.prim?.kayit || 0) > 0;
 
   const yilSecenekleri = useMemo(() => {
     const simdiYil = new Date().getFullYear();
-    const maxDonemYil = donemler.length
-      ? Math.max(...donemler.map((d) => Number(d.yil)))
-      : simdiYil;
-    // Mevcut yılı her zaman seçeneklere dahil et (ör. 2026)
-    const baslangic = Math.min(simdiYil, maxDonemYil + 1);
-    return Array.from({ length: 5 }, (_, i) => baslangic + i);
-  }, [donemler]);
+    // Mevcut yıl + önümüzdeki yıllar (ör. 2026…2030)
+    return Array.from({ length: 5 }, (_, i) => simdiYil + i);
+  }, []);
 
-  const varsayilanYil = new Date().getFullYear();
-  const aktifYeniYil =
-    seciliYeniYil ||
-    (yilSecenekleri.includes(varsayilanYil) ? varsayilanYil : yilSecenekleri[0]) ||
-    varsayilanYil;
+  const aktifYeniYil = seciliYeniYil || yilSecenekleri[0] || new Date().getFullYear();
+
+  const yilDonemleri = useMemo(
+    () => donemler.filter((d) => Number(d.yil) === Number(aktifYeniYil)),
+    [donemler, aktifYeniYil]
+  );
+
+  async function yilaGec(hedefYil, liste = donemler) {
+    const yil = Number(hedefYil);
+    setSeciliYeniYil(yil);
+    const yildakiler = liste.filter((d) => Number(d.yil) === yil);
+    if (!yildakiler.length) {
+      setAcikId(null);
+      return;
+    }
+    const simdi = new Date();
+    const buAy =
+      yil === simdi.getFullYear()
+        ? yildakiler.find((d) => Number(d.ay) === simdi.getMonth() + 1)
+        : null;
+    const secili =
+      (acikId && yildakiler.find((d) => Number(d.id) === Number(acikId))) ||
+      buAy ||
+      yildakiler.find((d) => d.durum === "acik") ||
+      yildakiler[0];
+    if (!secili) return;
+    setAcikId(secili.id);
+    if (!panel[secili.id]) {
+      try {
+        await paneliYukle(secili.id);
+      } catch (hata) {
+        setMesaj({ tip: "hata", metin: hata.message });
+      }
+    }
+  }
 
   async function yeniYilDonemiAc(hedefYil = aktifYeniYil) {
     if (yeniYilYukleniyor || yukleniyor || hesaplaniyor) return;
@@ -230,7 +327,10 @@ export default function PrimHesaplama() {
         return;
       }
       const liste = await fetch("/api/donemler").then((r) => r.json());
-      if (Array.isArray(liste)) setDonemler(liste);
+      if (Array.isArray(liste)) {
+        setDonemler(liste);
+        await yilaGec(yil, liste);
+      }
       setMesaj({
         tip: "ok",
         metin: veri.mesaj || `${yil} dönemleri açıldı.`,
@@ -276,9 +376,10 @@ export default function PrimHesaplama() {
 
   async function ayAc(donem) {
     const simdi = new Date();
+    // Yalnızca içinde bulunulan yılın henüz gelmemiş ayları kilitli
     const gelecek =
-      Number(donem.yil) > simdi.getFullYear()
-      || (Number(donem.yil) === simdi.getFullYear() && Number(donem.ay) > simdi.getMonth() + 1);
+      Number(donem.yil) === simdi.getFullYear() &&
+      Number(donem.ay) > simdi.getMonth() + 1;
     if (gelecek) return;
     if (Number(acikId) === Number(donem.id)) return;
     setMesaj(null);
@@ -334,9 +435,6 @@ export default function PrimHesaplama() {
       }
       if (job.durum === "bitti") return { tamamlandi: true, sonuc: job.sonuc || {} };
       if (job.durum === "hata") throw new Error(job.hata || "Dosya işlenemedi");
-      if (tip === "hesap") {
-        setHesapIlerleme(job.ilerleme || { asama: "devam" });
-      }
       if (job.ilerleme?.toplam) {
         const y = job.ilerleme.yapilan || 0;
         const t = job.ilerleme.toplam;
@@ -451,11 +549,15 @@ export default function PrimHesaplama() {
   }
 
   async function primHesapla() {
-    if (!zorunluDosyalarHazir || !acikId) return;
+    if (!tumDosyalarHazir || !acikId) return;
     setHesaplaniyor(true);
-    setHesapIlerleme({ asama: "basliyor" });
     setMesaj({ tip: "notr", metin: "Prim hesaplanıyor, lütfen bekleyin…" });
     try {
+      if (talimatTimerRef.current) {
+        clearTimeout(talimatTimerRef.current);
+        talimatTimerRef.current = null;
+      }
+      await ozelTalimatiKaydet(acikId, ozelTalimat);
       const cevap = await fetch(`/api/hesapla/${acikId}`, { method: "POST" });
       const ham = await cevap.text();
       let veri = {};
@@ -491,73 +593,21 @@ export default function PrimHesaplama() {
           Number(item.id) === Number(acikId) ? { ...item, durum: "hesaplandi" } : item
         )
       );
+      const notBilgi = veri.ozelTalimatVar
+        ? " Özel talimat hesaba dahil edildi."
+        : Number(veri.ozelDurumUygulanan || 0) > 0
+          ? ` Özel durum: ${say(veri.ozelDurumUygulanan)} etki uygulandı.`
+          : "";
       setMesaj({
         tip: "ok",
         metin: `${say(veri.uzmanMagazaSayisi)} uzman-mağaza için ${tl(
           veri.toplamPrim
-        )} prim hesaplandı. Rapor açılıyor…`,
+        )} prim hesaplandı.${notBilgi} Rapor açılıyor…`,
       });
       router.push(`/rapor?donem=${acikId}`);
     } catch (hata) {
       setMesaj({ tip: "hata", metin: hata.message });
       setHesaplaniyor(false);
-      setHesapIlerleme(null);
-    }
-  }
-
-  async function dfbPrimDisiKaydet(acik) {
-    if (!acikId || kuralKaydediliyor || hesaplaniyor) return;
-    setKuralKaydediliyor(true);
-    try {
-      const cevap = await fetch(`/api/donem/${acikId}/dfb-prim-disi`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dfb_prim_disi: acik ? 1 : 0 }),
-      });
-      const veri = await cevap.json().catch(() => ({}));
-      if (!cevap.ok) throw new Error(veri.hata || "DFB ayarı kaydedilemedi");
-      setDonemler((liste) =>
-        liste.map((item) => (Number(item.id) === Number(acikId) ? { ...item, ...veri } : item))
-      );
-      setMesaj({
-        tip: "ok",
-        metin: acik
-          ? "DFB prim dışı açık. Narciso, Issey ve Zadig satırları DFB GRUP PRİM DIŞI. Para için yeniden hesapla."
-          : "DFB prim dışı kapalı. Bu markalar da prim alır. Yeniden hesapla ile yazılır.",
-      });
-    } catch (hata) {
-      setMesaj({ tip: "hata", metin: hata.message });
-    } finally {
-      setKuralKaydediliyor(false);
-    }
-  }
-
-  async function kuralSetiKaydet(seti) {
-    if (!acikId || kuralKaydediliyor || hesaplaniyor) return;
-    setKuralKaydediliyor(true);
-    try {
-      const cevap = await fetch(`/api/donem/${acikId}/kural-seti`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kural_seti: seti }),
-      });
-      const veri = await cevap.json().catch(() => ({}));
-      if (!cevap.ok) throw new Error(veri.hata || "Kural kaydedilemedi");
-      setDonemler((liste) =>
-        liste.map((item) => (Number(item.id) === Number(acikId) ? { ...item, ...veri } : item))
-      );
-      setMesaj({
-        tip: "ok",
-        metin: seti === "agustos"
-          ? "Ağustos Beymen cilt kuralları açık. Yeniden hesapla ile uygulanır."
-          : seti === "eylul"
-            ? "Eylül Beymen cilt kuralları açık. Yeniden hesapla ile uygulanır."
-            : "Beymen cilt kuralları kapalı. Yeniden hesapla mevcut bölüm kurallarıyla çalışır.",
-      });
-    } catch (hata) {
-      setMesaj({ tip: "hata", metin: hata.message });
-    } finally {
-      setKuralKaydediliyor(false);
     }
   }
 
@@ -576,16 +626,16 @@ export default function PrimHesaplama() {
         <div className="ay-secici-baslik">
           <div>
             <span>Dönemler</span>
-            <small>Bu yılın ayları · gelecek aylar kapalı</small>
+            <small>{aktifYeniYil} yılı · gelecek aylar kapalı</small>
           </div>
           <div className="yeni-yil-ac">
-            <label htmlFor="yeni-yil-sec">Yeni yıl</label>
+            <label htmlFor="yeni-yil-sec">Yıl</label>
             <select
               id="yeni-yil-sec"
               className="yeni-yil-select"
               value={aktifYeniYil}
               disabled={yeniYilYukleniyor || !!yukleniyor || hesaplaniyor}
-              onChange={(e) => setSeciliYeniYil(Number(e.target.value))}
+              onChange={(e) => yilaGec(Number(e.target.value))}
             >
               {yilSecenekleri.map((yil) => (
                 <option key={yil} value={yil}>
@@ -604,52 +654,58 @@ export default function PrimHesaplama() {
           </div>
         </div>
         <div className="donem-kutular ay-kutular" role="tablist" aria-label="Dönem seçimi">
-          {donemler.map((donem) => {
-            const simdi = new Date();
-            const aktif = Number(acikId) === Number(donem.id);
-            const buAy =
-              Number(donem.yil) === simdi.getFullYear() &&
-              Number(donem.ay) === simdi.getMonth() + 1;
-            const gelecek =
-              Number(donem.yil) > simdi.getFullYear()
-              || (Number(donem.yil) === simdi.getFullYear() && Number(donem.ay) > simdi.getMonth() + 1);
-            const donemPrim =
-              Number(panel[donem.id]?.dashboard?.prim?.kayit || 0) > 0 ||
-              donem.durum === "hesaplandi";
-            const sinif = [
-              aktif ? "aktif" : "",
-              buAy ? "bu-ay" : "",
-              donemPrim ? "hesaplandi" : "",
-              gelecek ? "gelecek" : "",
-            ].filter(Boolean).join(" ");
-            return (
-              <button
-                key={donem.id}
-                type="button"
-                role="tab"
-                aria-selected={aktif}
-                aria-disabled={gelecek}
-                disabled={gelecek}
-                className={sinif}
-                onClick={() => ayAc(donem)}
-                title={gelecek ? "Bu ay henüz gelmedi" : donemPrim ? "Hesaplandı" : undefined}
-              >
-                <span>{donem.ad}</span>
-                <small>
-                  <i className={`donem-durum ${donemPrim ? "hesaplandi" : gelecek ? "kapandi" : donem.durum}`} />
-                  {gelecek
-                    ? "Bekliyor"
-                    : buAy
-                      ? (donemPrim ? "Bu ay · Hesaplandı" : "Bu ay")
-                      : donemPrim
-                        ? "Hesaplandı"
-                        : donem.durum === "kapandi"
-                          ? "Kapalı"
-                          : "Açık"}
-                </small>
-              </button>
-            );
-          })}
+          {yilDonemleri.length === 0 ? (
+            <p className="ay-bos">
+              {aktifYeniYil} yılı henüz açılmadı. “Dönem aç” ile 12 ayı oluşturabilirsin.
+            </p>
+          ) : (
+            yilDonemleri.map((donem) => {
+              const simdi = new Date();
+              const aktif = Number(acikId) === Number(donem.id);
+              const buAy =
+                Number(donem.yil) === simdi.getFullYear() &&
+                Number(donem.ay) === simdi.getMonth() + 1;
+              const gelecek =
+                Number(donem.yil) === simdi.getFullYear() &&
+                Number(donem.ay) > simdi.getMonth() + 1;
+              const donemPrim =
+                Number(panel[donem.id]?.dashboard?.prim?.kayit || 0) > 0 ||
+                donem.durum === "hesaplandi";
+              const sinif = [
+                aktif ? "aktif" : "",
+                buAy ? "bu-ay" : "",
+                donemPrim ? "hesaplandi" : "",
+                gelecek ? "gelecek" : "",
+              ].filter(Boolean).join(" ");
+              return (
+                <button
+                  key={donem.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aktif}
+                  aria-disabled={gelecek}
+                  disabled={gelecek}
+                  className={sinif}
+                  onClick={() => ayAc(donem)}
+                  title={gelecek ? "Bu ay henüz gelmedi" : donemPrim ? "Hesaplandı" : undefined}
+                >
+                  <span>{donem.ad}</span>
+                  <small>
+                    <i className={`donem-durum ${donemPrim ? "hesaplandi" : gelecek ? "kapandi" : donem.durum}`} />
+                    {gelecek
+                      ? "Bekliyor"
+                      : buAy
+                        ? (donemPrim ? "Bu ay · Hesaplandı" : "Bu ay")
+                        : donemPrim
+                          ? "Hesaplandı"
+                          : donem.durum === "kapandi"
+                            ? "Kapalı"
+                            : "Açık"}
+                  </small>
+                </button>
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -663,45 +719,9 @@ export default function PrimHesaplama() {
               <div>
                 <h3>{acikDonem.ad}</h3>
                 <p>
-                  {DOSYALAR.filter((d) => d.zorunlu && dosyaHazir(d)).length}/
-                  {DOSYALAR.filter((d) => d.zorunlu).length} zorunlu dosya yüklü
+                  {DOSYALAR.filter(dosyaHazir).length}/{DOSYALAR.length} dosya yüklü
                 </p>
               </div>
-            </div>
-            <div className="kural-toggle-satir">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={acikDonem.kural_seti === "agustos"}
-                className={`kural-toggle ${acikDonem.kural_seti === "agustos" ? "acik" : ""}`}
-                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
-                onClick={() => kuralSetiKaydet(acikDonem.kural_seti === "agustos" ? null : "agustos")}
-              >
-                <i />
-                Ağustos
-              </button>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={acikDonem.kural_seti === "eylul"}
-                className={`kural-toggle ${acikDonem.kural_seti === "eylul" ? "acik" : ""}`}
-                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
-                onClick={() => kuralSetiKaydet(acikDonem.kural_seti === "eylul" ? null : "eylul")}
-              >
-                <i />
-                Eylül
-              </button>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1}
-                className={`kural-toggle ${(acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1) ? "acik" : ""}`}
-                disabled={kuralKaydediliyor || hesaplaniyor || !!yukleniyor || acikDonem.durum === "kapandi"}
-                onClick={() => dfbPrimDisiKaydet(!(acikDonem.dfb_prim_disi == null || Number(acikDonem.dfb_prim_disi) === 1))}
-              >
-                <i />
-                DFB prim dışı
-              </button>
             </div>
           </div>
 
@@ -716,61 +736,54 @@ export default function PrimHesaplama() {
                     yukleniyor === dosya.tip ? "yukleniyor" : ""
                   }`}
                 >
+                  <div className="dosya-ikon">
+                    <Ikon tip={hazir ? "check" : "upload"} />
+                  </div>
                   <div className="dosya-bilgi">
                     <div>
                       <h4>{dosya.baslik}</h4>
-                      <span className={dosya.zorunlu ? "zorunlu" : "opsiyonel"}>
-                        {dosya.zorunlu ? "Zorunlu" : "Opsiyonel"}
-                      </span>
+                      <span className="zorunlu">Zorunlu</span>
                     </div>
                     <p>{dosya.kisa}</p>
-                    <small className="dosya-format">
-                      Sadece şu formatlarda dosya gönderebilirsiniz: .xlsx, .xls, .csv
-                    </small>
                     {sonuc?.hata && <small className="dosya-hata">{sonuc.hata}</small>}
                   </div>
-                  <div className="dosya-aksiyon">
-                    <div className="dosya-ikon">
-                      <Ikon tip={hazir ? "check" : "upload"} />
-                    </div>
-                    <label
-                      className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""} ${
-                        yukleniyor && yukleniyor !== dosya.tip ? "kilitli" : ""
-                      }`}
-                      aria-live="polite"
-                      onClick={(event) => {
-                        if (yukleniyor || hesaplaniyor) {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setBekletUyari(true);
-                        }
+                  <label
+                    className={`dosya-sec ${yukleniyor === dosya.tip ? "aktif-yukleme" : ""} ${
+                      yukleniyor && yukleniyor !== dosya.tip ? "kilitli" : ""
+                    }`}
+                    aria-live="polite"
+                    onClick={(event) => {
+                      if (yukleniyor || hesaplaniyor) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setBekletUyari(true);
+                      }
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      disabled={
+                        !!yukleniyor ||
+                        hesaplaniyor ||
+                        acikDonem.durum === "kapandi"
+                      }
+                      onChange={(event) => {
+                        dosyaGonder(dosya.tip, event.target.files?.[0]);
+                        event.target.value = "";
                       }}
-                    >
-                      <input
-                        type="file"
-                        accept=".xlsx,.xls,.csv"
-                        disabled={
-                          !!yukleniyor ||
-                          hesaplaniyor ||
-                          acikDonem.durum === "kapandi"
-                        }
-                        onChange={(event) => {
-                          dosyaGonder(dosya.tip, event.target.files?.[0]);
-                          event.target.value = "";
-                        }}
-                      />
-                      {yukleniyor === dosya.tip ? (
-                        <>
-                          <span className="yukleme-spinner" />
-                          Yükleniyor…
-                        </>
-                      ) : hazir ? (
-                        "Yenile"
-                      ) : (
-                        "Dosya seç"
-                      )}
-                    </label>
-                  </div>
+                    />
+                    {yukleniyor === dosya.tip ? (
+                      <>
+                        <span className="yukleme-spinner" />
+                        Yükleniyor…
+                      </>
+                    ) : hazir ? (
+                      "Yenile"
+                    ) : (
+                      "Dosya seç"
+                    )}
+                  </label>
                 </article>
               );
             })}
@@ -796,12 +809,41 @@ export default function PrimHesaplama() {
             </details>
           )}
 
+          <section className="ozel-durum-chat" aria-label="Özel durum talimatı">
+            <div className="ozel-durum-composer">
+              <h3 className="ozel-durum-soru">Özel bir durum mu var?</h3>
+              <div
+                className={`ozel-durum-pill${
+                  ozelTalimat.includes("\n") || ozelTalimat.length > 60
+                    ? " is-cok-satir"
+                    : ""
+                }`}
+              >
+                <textarea
+                  id="ozel-durum-input"
+                  ref={notInputRef}
+                  rows={1}
+                  value={ozelTalimat}
+                  onChange={(e) => {
+                    ozelTalimatDegisti(e.target.value);
+                    notAlaniniBoyutla(e.target);
+                  }}
+                  onInput={(e) => notAlaniniBoyutla(e.target)}
+                  placeholder="Örn: Ayşe Yılmaz için cilt ilk 2 onaylansın / Mehmet Demir hariç tutulsun"
+                  maxLength={8000}
+                  disabled={acikDonem.durum === "kapandi"}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+          </section>
+
           <div className="panel-alt">
             <div className="panel-alt-sol">
               <p>
-                {zorunluDosyalarHazir
-                  ? "Zorunlu dosyalar hazır. Prim hesaplanabilir."
-                  : "Zorunlu dosyaları yükleyin (hedef ve sıralama opsiyonel)."}
+                {tumDosyalarHazir
+                  ? "Tüm dosyalar hazır. Prim hesaplanabilir."
+                  : "Tüm dosyaları yükleyin."}
               </p>
               {primVar && (
                 <p className="panel-alt-ikincil">Bu dönem için hesap sonucu mevcut.</p>
@@ -825,7 +867,7 @@ export default function PrimHesaplama() {
               <button
                 className="btn prim-cta"
                 disabled={
-                  !zorunluDosyalarHazir ||
+                  !tumDosyalarHazir ||
                   !!yukleniyor ||
                   hesaplaniyor ||
                   acikDonem.durum === "kapandi"
@@ -853,28 +895,6 @@ export default function PrimHesaplama() {
                 </Link>
               )}
             </div>
-            {hesaplaniyor && (
-              <div className="hesap-progress-kutu">
-                <div className="hesap-progress-metin">
-                  {hesapIlerleme?.asama === "esleme"
-                    ? "Satış eşlemesi yapılıyor…"
-                    : hesapIlerleme?.asama === "hesap"
-                      ? "Prim satırları hesaplanıyor…"
-                      : "Prim hesabı başlatıldı, lütfen bekleyin…"}
-                </div>
-                <div className="rapor-progress" aria-label="Hesaplama ilerleme">
-                  <i
-                    style={{
-                      width:
-                        hesapIlerleme?.toplam > 1
-                          ? `${Math.min(100, Math.round((Number(hesapIlerleme.yapilan || 0) / Number(hesapIlerleme.toplam)) * 100))}%`
-                          : undefined,
-                      animation: !(hesapIlerleme?.toplam > 1) ? "rapor-progress-kay 1.2s ease infinite" : undefined,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </section>
       )}
@@ -958,9 +978,6 @@ export default function PrimHesaplama() {
                 <>
                   Sabrınız için teşekkür ederiz. Şu anda prim hesabı devam etmektedir.
                   Lütfen işlemin tamamlanmasını bekleyiniz.
-                  <span className="rapor-progress" style={{ marginTop: 12, display: "block" }}>
-                    <i style={{ animation: "rapor-progress-kay 1.2s ease infinite" }} />
-                  </span>
                 </>
               ) : (
                 <>
